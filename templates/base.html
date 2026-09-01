@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Trade Tally{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f4f6f8; }
+    .stat-card { border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .pnl-pos { color: #0f7b4c; }
+    .pnl-neg { color: #b42318; }
+    tr.row-profit { --bs-table-bg: #e8f6ee; }
+    tr.row-loss { --bs-table-bg: #fdecec; }
+    tr.row-open { --bs-table-bg: #fff; }
+    tr.trade-row { cursor: pointer; }
+    tr.trade-row:hover { filter: brightness(0.98); }
+  </style>
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <div class="container">
+      <a class="navbar-brand" href="{% url 'dashboard' %}">Trade Tally</a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navMain">
+        <ul class="navbar-nav me-auto">
+          <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'trade_detail' %} active{% endif %}" href="{% url 'dashboard' %}">Trades</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link{% if request.resolver_match.url_name == 'app_config' %} active{% endif %}" href="{% url 'app_config' %}">Config</a>
+          </li>
+        </ul>
+        <div class="d-flex align-items-center gap-3">
+          {% if user.is_authenticated %}
+            <span class="text-secondary small">{{ user.username }}</span>
+            <form method="post" action="{% url 'logout' %}" class="m-0">
+              {% csrf_token %}
+              <button class="btn btn-outline-light btn-sm" type="submit">Log out</button>
+            </form>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+  <main class="container pb-5">
+    {% if messages %}
+      {% for message in messages %}
+        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+      {% endfor %}
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  {% block extra_js %}{% endblock %}
+</body>
+</html>

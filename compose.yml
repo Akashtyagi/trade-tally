@@ -1,0 +1,27 @@
+name: trade-tally
+
+services:
+  web:
+    container_name: trade-tally
+    build:
+      context: .
+      dockerfile: Containerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    environment:
+      DB_ENGINE: django.db.backends.sqlite3
+      DB_NAME: /data/db.sqlite3
+      ALLOWED_HOSTS: localhost,127.0.0.1,0.0.0.0,trade-tally,web
+      CSRF_TRUSTED_ORIGINS: http://localhost:8000,http://127.0.0.1:8000
+      ENABLE_SCHEDULER: "false"
+      GOOGLE_SERVICE_ACCOUNT_FILE: /app/secrets/google-credentials.json
+      KITE_REDIRECT_URL: http://127.0.0.1:8000/kite/callback/
+    volumes:
+      - trade-tally-data:/data
+      - ./secrets:/app/secrets:ro
+    restart: unless-stopped
+
+volumes:
+  trade-tally-data:

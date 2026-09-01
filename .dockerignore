@@ -1,0 +1,15 @@
+.venv
+.git
+.gitignore
+.env
+__pycache__
+*.pyc
+.pytest_cache
+tests
+.github
+google-credentials.json
+secrets/*.json
+*.sqlite3
+docs
+README.md
+.venv

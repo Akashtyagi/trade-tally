@@ -1,0 +1,30 @@
+[project]
+name = "trade-tally"
+version = "0.1.0"
+description = "Track Zerodha holdings against a Google Sheet of planned trades"
+requires-python = ">=3.12"
+dependencies = [
+    "django>=5.1,<6",
+    "pymysql>=1.1",
+    "gspread>=6.1",
+    "google-auth>=2.35",
+    "kiteconnect>=5.0",
+    "apscheduler>=3.10",
+    "python-dotenv>=1.0",
+    "gunicorn>=23.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-django>=4.9",
+    "responses>=0.25",
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "config.settings"
+pythonpath = ["."]
+testpaths = ["tests"]
+
+[tool.uv]
+package = false

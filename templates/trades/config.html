@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}Config · Trade Tally{% endblock %}
+
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+  <div>
+    <h1 class="h3 mb-0">Config</h1>
+    <p class="text-secondary mb-0">Non-secret settings. Bot token, Kite keys, and Google credentials stay in <code>.env</code>.</p>
+  </div>
+  <form method="post" action="{% url 'sync_sheet' %}">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="config">
+    <button class="btn btn-outline-dark" type="submit">Sync from Sheet</button>
+  </form>
+</div>
+
+<form method="post" class="mb-5">
+  {% csrf_token %}
+  {{ form.non_field_errors }}
+
+  <div class="card stat-card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Telegram</h2>
+      <p class="small text-secondary">
+        {% if telegram_token_ok %}Bot token is set in <code>.env</code>.{% else %}Set <code>TELEGRAM_BOT_TOKEN</code> in <code>.env</code> — it is not stored here.{% endif %}
+      </p>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label" for="{{ form.telegram_chat_id.id_for_label }}">{{ form.telegram_chat_id.label }}</label>
+          {{ form.telegram_chat_id }}
+          {% if form.telegram_chat_id.errors %}<div class="text-danger small">{{ form.telegram_chat_id.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-6 d-flex align-items-end">
+          <div class="form-check mb-2">
+            {{ form.telegram_alerts_enabled }}
+            <label class="form-check-label" for="{{ form.telegram_alerts_enabled.id_for_label }}">{{ form.telegram_alerts_enabled.label }}</label>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card stat-card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Google Sheet</h2>
+      <p class="small text-secondary">Spreadsheet ID is the long value in the URL after <code>/d/</code>. Worksheet is the tab name (e.g. Aug24-27).</p>
+      <div class="row g-3">
+        <div class="col-md-8">
+          <label class="form-label" for="{{ form.google_spreadsheet_id.id_for_label }}">{{ form.google_spreadsheet_id.label }}</label>
+          {{ form.google_spreadsheet_id }}
+          {% if form.google_spreadsheet_id.errors %}<div class="text-danger small">{{ form.google_spreadsheet_id.errors }}</div>{% endif %}
+        </div>
+        <div class="col-md-4">
+          <label class="form-label" for="{{ form.google_worksheet.id_for_label }}">{{ form.google_worksheet.label }}</label>
+          {{ form.google_worksheet }}
+          {% if form.google_worksheet.errors %}<div class="text-danger small">{{ form.google_worksheet.errors }}</div>{% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card stat-card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Summary cells</h2>
+      <p class="small text-secondary">A1-style cells for corpus, risk %, current value, remaining balance (for example A5, B2, N2, K2).</p>
+      <div class="row g-3">
+        {% for field in form %}
+          {% if field.name|slice:":4" == "sum_" %}
+          <div class="col-md-3">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <div class="card stat-card mb-4">
+    <div class="card-body">
+      <h2 class="h5">Column mapping</h2>
+      <p class="small text-secondary">Sheet header text for each trade field. Leave blank to use the built-in aliases (Share, Current Quantity, and so on).</p>
+      <div class="row g-3">
+        {% for field in form %}
+          {% if field.name|slice:":4" == "col_" %}
+          <div class="col-md-4">
+            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+            {{ field }}
+          </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  <button class="btn btn-dark" type="submit">Save config</button>
+</form>
+
+{% if app_settings.last_sheet_sync_at or app_settings.last_zerodha_sync_at %}
+<p class="small text-secondary">
+  {% if app_settings.last_sheet_sync_at %}Last sheet sync: {{ app_settings.last_sheet_sync_at }}.{% endif %}
+  {% if app_settings.last_zerodha_sync_at %}Last Zerodha sync: {{ app_settings.last_zerodha_sync_at }}.{% endif %}
+</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,19 @@
+,,,,,,,,,,"Remaining 
+Balance",,Current Amount Spend,Active Investment,,,Current Amount Spend Percentage,,,Trade Completed,,,,,,,,,,P/L,,"-₹   20,764.75",,,,,
+ max allocation ,8%,,,,,,,,,"₹   965,852.40",,"₹   192,618.10","₹   213,382.85",,,17.78%,,,9.73%,,,,,,,,,,,,,,,,,
+ Total Portfolio Size ,Risk %,Total Risk,Entry price,Stop Loss,# of Shares,Max investment in Share,Total Capital Percentage (TCP),,S No,Date,Share,Risk Percentage,Entry Price,Current Quantity,Minimum Shares Recom.,Total Investment,"Total Captial 
+Percentage",Buy Range,Current P/L,STOP LOSS,Sell Ratio,FIRST TARGET,SECOND TARGET,"THRID
+TARGET",Comments,,S No,Share,Entry Price,Quantity,Exit Price,Total Cash Out,P/L,P/L Percentage,Date,Comments
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+" ₹ 1,200,000.00 ",1.0%," ₹ 12,000.00 ", ₹ 150.00 , ₹ 125.00 ,480," ₹ 72,000 ",6.00%,,1,7-Aug-2024,CENTRALBK,1%,,0,#DIV/0!,₹   0.00,0.00%,,₹   30.25,,0 - 0 - 0,,,,,,1,TRIVENI,₹   411.00,15,₹   441.00,"₹   6,615.00",₹   450.00,7.00%,19-Aug-2024,
+,1.5%," ₹ 18,000.00 ", ₹ 150.00 , ₹ 125.00 ,720," ₹ 108,000 ",9.00%,,2,7-Aug-2024,IOB,1%,,0,#DIV/0!,₹   0.00,0.00%,,₹   16.92,,0 - 0 - 0,,,,,,2,INTERARCH,"₹   1,169.00",5,"₹   1,484.95","₹   7,424.75","₹   1,579.75",27.00%,10-Oct-2024,
+,2.0%," ₹ 24,000.00 ", ₹ 150.00 , ₹ 125.00 ,960," ₹ 144,000 ",12.00%,,3,7-Aug-2024,MAHABANK,1%,,0,#DIV/0!,₹   0.00,0.00%,,₹   82.33,,0 - 0 - 0,,,,,,3,JTLIND,₹   113.62,80,₹   60.00,"₹   4,800.00","-₹   4,289.60",-47.00%,9-May-2025,
+,2.5%," ₹ 30,000.00 ", ₹ 150.00 , ₹ 125.00 ,1200," ₹ 180,000 ",15.00%,,4,7-Aug-2024,PSB,1%,,0,#DIV/0!,₹   0.00,0.00%,,₹   17.97,,0 - 0 - 0,,,,,,4,RAYMONDLSL,"₹   2,350.00",3,₹   954.00,"₹   2,862.00","-₹   4,188.00",-59.00%,9-May-2025,
+,3.0%," ₹ 36,000.00 ", ₹ 150.00 , ₹ 125.00 ,1440," ₹ 216,000 ",18.00%,,5,7-Aug-2024,UCOBANK,1%,,0,#DIV/0!,₹   0.00,0.00%,,₹   24.90,,0 - 0 - 0,,,,,,5,GRSE,"₹   1,915.00",3,"₹   2,497.00","₹   7,491.00","₹   1,746.00",30.00%,16-May-2025,
+,,,Custom quantity with Stoploss,,4, ₹ 600 ,0.05%,,6,,PENIND,2%,₹   175.50,95,137,"₹   16,672.50",1.39%,155-180,-₹   9.50,100,38 - 28.5 - 28.5,,,,,,6,PENIND,₹   175.50,30,₹   213.78,"₹   6,413.40","₹   1,148.40",#REF!,22-May-2025,
+,,,Custom quantity without Stoploss,,,,,,7,,CANTABIL,,,0,#DIV/0!,₹   0.00,0.00%,,₹   242.32,,0 - 0 - 0,,,,,,7,INTERARCH,"₹   1,152.00",5,"₹   1,920.00","₹   9,600.00","₹   3,840.00",67.00%,22-May-2025,
+,"Only the yellow tabs needs to be filled, rest of the data will populate automatically",,,,,,,,8,,AMIORG,2.50%,"₹   1,225.00",0,57,₹   0.00,0.00%,1225-1250,#N/A,700,0 - 0 - 0,,,,,,8,MAZDOCK,"₹   3,106.00",,,₹   0.00,"-₹   3,106.00",#DIV/0!,,
+,Risk % & Total Risk is on the total portfolio size,,,,,Long Term Shares,,,9,6-Aug-2024,ABDL,1.50%,₹   301.00,15,59,"₹   4,515.00",0.38%,285-295,₹   319.50,,6 - 4.5 - 4.5,,,,,,9,CENTURYPLY,₹   812.90,31,₹   790.00,"₹   24,490.00",-₹   709.90,-3.00%,,
+,Don’t go beyond 2% of risk on your total portfolio on any particular company,,,,,Mean Reversal,,,10,5-Aug-2024,TRIVENI,2%,₹   411.00,25,216,"₹   10,275.00",0.86%,370-390,-₹   114.00,300,10 - 7.5 - 7.5,,,,,,10,INTERARCH,"₹   1,140.00",5,"₹   2,354.00","₹   11,770.00","₹   6,070.00",106.00%,,
+,Don’t touch the cells that are highlighted in blue color,,,,,Recomm Vs Holding diff more than 10,,,11,22-Aug-2024,GENESYS,2.50%,₹   745.00,10,86,"₹   7,450.00",0.62%,650-745,-₹   517.00,400,4 - 3 - 3,,,,,,11,AMBER,"₹   8,052.00",2,"₹   6,564.00","₹   13,128.00","-₹   2,976.00",-18.00%,5-Dec-2025,
+,* Pls. note this position sizing doesn’t include brokerage charges,,,,,,,,12,22-Aug-2024,ITBEES,,₹   44.50,175,0,"₹   7,787.50",0.65%,,-₹   10.20,34,70 - 52.5 - 52.5,,,,,,12,HIMATSEIDE,₹   196.00,70,₹   113.75,"₹   7,962.50","-₹   5,757.50",-42.00%,,

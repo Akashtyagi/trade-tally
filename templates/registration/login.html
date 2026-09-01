@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+
+{% block title %}Sign in · Trade Tally{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-5 col-lg-4">
+    <div class="card shadow-sm">
+      <div class="card-body p-4">
+        <h1 class="h4 mb-3">Trade Tally</h1>
+        <p class="text-secondary">Sign in to view trades and close positions.</p>
+        <form method="post">
+          {% csrf_token %}
+          {% if form.non_field_errors %}
+            <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+          {% endif %}
+          <div class="mb-3">
+            <label class="form-label" for="id_username">Username</label>
+            <input class="form-control" type="text" name="username" id="id_username" autofocus required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label" for="id_password">Password</label>
+            <input class="form-control" type="password" name="password" id="id_password" required>
+          </div>
+          <button class="btn btn-dark w-100" type="submit">Sign in</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

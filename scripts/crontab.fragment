@@ -1,0 +1,4 @@
+# trade-tally-podman — weekday NSE/BSE cash session (Mac timezone should be IST)
+# 09:15, then hourly 10:00–15:00. The app still no-ops outside 09:15–15:30 IST.
+15 9 * * 1-5 /Users/akashtyagi/Repos/trade-tally/scripts/cron-run-checks.sh
+0 10-15 * * 1-5 /Users/akashtyagi/Repos/trade-tally/scripts/cron-run-checks.sh

@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.env
+*.sqlite3
+db.sqlite3
+google-credentials.json
+service-account.json
+secrets/*.json
+staticfiles/
+.DS_Store
+dist/
+build/
