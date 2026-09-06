@@ -13,7 +13,7 @@ This document is the functional spec. Implementation should match these rules ev
 
 ### F2 — Compare to Zerodha portfolio
 
-- Kite `holdings()` supplies held quantity and average buy price.
+- Kite `holdings()` is the **source of truth for held quantity**. The dashboard and buy-gap alerts use that number. If the sheet `Quantity` / current qty cell differs, the app **writes Kite’s qty back to the sheet**. A symbol on the sheet but not in Kite holdings is treated as held **0**. Sheet sync does not overwrite a qty that already came from Zerodha.
 - Kite `ltp()` (or last price on the holding) supplies current price for symbols that appear on the sheet.
 - Match key: `EXCHANGE:SYMBOL` (default exchange `NSE`).
 - If Kite is disconnected (expired daily token), the UI still shows sheet data; hourly alerts skip or send a single “Kite session expired” Telegram message.
@@ -113,6 +113,23 @@ Open `http://127.0.0.1:8000/` with no login.
 - Kite access tokens expire daily.
 - Dashboard control to start Kite login and land on `/kite/callback/` with `request_token`.
 - Token may be stored in a **local file** (e.g. `.kite-session.json`, gitignored) because there is no DB. Not in Google Sheets.
+
+### F9 — Tradebook ingest (occasional script)
+
+Paste Zerodha tradebook exports into tabs named **`Tradebook - …`** (any suffix). Run:
+
+```bash
+./scripts/ingest-tradebook.sh
+```
+
+The script:
+
+1. Reads those tabs (and the previous **`Tradebook - Ledger`** so older periods are not lost).
+2. Keeps only what it needs for next time in **`Tradebook - Ledger`**, plus a **`Tradebook - Matched`** summary for dashboard symbols.
+3. Attaches fills to each tracked share’s detail page.
+4. If it sees **BUY then later SELL** and Zerodha held qty is **0**, marks the trade **CLOSED** and writes realized P/L (FIFO). A leftover holding after sells is **PARTIAL**.
+
+Dashboard list: filter by position (OPEN / PARTIAL / CLOSED) and arrange by name or position. Closed rows are green on profit and red on loss.
 
 ## 2.2 Sheet contract (business data)
 

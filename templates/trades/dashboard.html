@@ -1,20 +1,24 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load sheets %}
 
-{% block title %}Dashboard · Trade Tally{% endblock %}
+{% block title %}{{ sheet.label }} · Trade Tally{% endblock %}
 
 {% block content %}
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
-    <h1 class="h3 mb-0">Trades</h1>
-    <p class="text-secondary mb-0">{{ open_count }} open · {{ trades|length }} total</p>
+    <h1 class="h3 mb-0">{{ sheet.label }}</h1>
+    <p class="text-secondary mb-0">
+      {{ trades|length }} live · {{ idle_trades|length }} closed / unheld · {{ stats.total_trades }} total
+      · tab {{ sheet.worksheet }}
+      {% if is_primary_sheet %}<span class="badge text-bg-warning text-dark ms-1">Primary</span>{% endif %}
+    </p>
   </div>
   <div class="d-flex flex-wrap gap-2">
-    <form method="post" action="{% url 'sync_sheet' %}">
+    <form method="post" action="{% if is_primary_sheet %}{% url 'sync_sheet' %}{% else %}{% url 'sync_sheet_for' sheet.slug %}{% endif %}">
       {% csrf_token %}
       <button class="btn btn-outline-dark" type="submit">Sync from Sheet</button>
     </form>
-    <form method="post" action="{% url 'zerodha_sync' %}">
+    <form method="post" action="{% if is_primary_sheet %}{% url 'zerodha_sync' %}{% else %}{% url 'zerodha_sync_for' sheet.slug %}{% endif %}">
       {% csrf_token %}
       <button class="btn btn-outline-success" type="submit" {% if not kite_session %}disabled title="Connect Kite first"{% endif %}>Zerodha sync</button>
     </form>
@@ -29,9 +33,10 @@
 </div>
 
 <p class="small text-secondary mb-3">
-  {% if kite_session %}Kite session from {{ kite_session.login_time }} (tokens expire daily).{% endif %}
-  {% if app_settings.last_sheet_sync_at %} Sheet last synced {{ app_settings.last_sheet_sync_at }}.{% endif %}
-  {% if app_settings.last_zerodha_sync_at %} Zerodha last synced {{ app_settings.last_zerodha_sync_at }}.{% endif %}
+  {% if is_primary_sheet %}Hourly cron syncs this tab only.{% else %}Cron does not run on this tab. Sync here with the buttons.{% endif %}
+  {% if kite_session %} Kite session from {{ kite_session.login_time }} (tokens expire daily).{% endif %}
+  {% if sheet.last_sheet_sync_at %} Sheet last synced {{ sheet.last_sheet_sync_at }}.{% endif %}
+  {% if sheet.last_zerodha_sync_at %} Zerodha last synced {{ sheet.last_zerodha_sync_at }}.{% endif %}
 </p>
 
 <div class="row g-3 mb-4">
@@ -47,7 +52,7 @@
     <div class="card stat-card">
       <div class="card-body">
         <div class="text-secondary small">Total invested</div>
-        <div class="fs-4 fw-semibold">₹{{ stats.total_invested|floatformat:2|intcomma }}</div>
+        <div class="fs-4 fw-semibold">{{ stats.total_invested|inr }}</div>
       </div>
     </div>
   </div>
@@ -56,123 +61,66 @@
       <div class="card-body">
         <div class="text-secondary small">Realized P/L</div>
         <div class="fs-4 fw-semibold {% if stats.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
-          ₹{{ stats.realized_pnl|floatformat:2|intcomma }}
+          {{ stats.realized_pnl|inr }}
         </div>
       </div>
     </div>
   </div>
+  {% if portfolio.total_budget %}
   <div class="col-md-3">
     <div class="card stat-card">
       <div class="card-body">
-        <div class="text-secondary small">Net P/L</div>
-        <div class="fs-4 fw-semibold {% if stats.net_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
-          ₹{{ stats.net_pnl|floatformat:2|intcomma }}
-        </div>
-        <div class="small text-secondary">Unrealized ₹{{ stats.unrealized_pnl|floatformat:2|intcomma }}</div>
+        <div class="text-secondary small">Corpus</div>
+        <div class="fs-5 fw-semibold">{{ portfolio.total_budget|inr }}</div>
       </div>
     </div>
   </div>
+  {% endif %}
 </div>
 
-<div class="card stat-card">
-  <div class="table-responsive">
-    <table class="table table-hover align-middle mb-0">
-      <thead class="table-light">
-        <tr>
-          <th>Symbol</th>
-          <th>Plan / held</th>
-          <th>Buy range</th>
-          <th>LTP</th>
-          <th>Target</th>
-          <th>SL</th>
-          <th>Active for</th>
-          <th>Status</th>
-          <th>P/L</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for trade in trades %}
-        <tr class="row-{{ trade.row_tone }} trade-row" data-href="{% url 'trade_detail' trade.pk %}">
-          <td>
-            <a class="fw-semibold text-decoration-none text-dark" href="{% url 'trade_detail' trade.pk %}">{{ trade.symbol }}</a>
-            <div class="small text-secondary">{{ trade.exchange }} · row {{ trade.sheet_row }}</div>
-          </td>
-          <td>{{ trade.recommended_qty|floatformat:0 }} / {{ trade.holding_qty|floatformat:0 }}</td>
-          <td>{{ trade.buy_low|floatformat:2 }} – {{ trade.buy_high|floatformat:2 }}</td>
-          <td>{% if trade.last_ltp %}{{ trade.last_ltp|floatformat:2 }}{% else %}—{% endif %}</td>
-          <td>{{ trade.target|floatformat:2 }}</td>
-          <td>{{ trade.stop_loss|floatformat:2 }}</td>
-          <td class="small">{{ trade.holding_age }}</td>
-          <td>
-            <span class="badge text-bg-{% if trade.status == 'CLOSED' %}secondary{% elif trade.status == 'PARTIAL' %}warning{% else %}primary{% endif %}">
-              {{ trade.status }}
-            </span>
-            {% if trade.remaining_qty and trade.status != 'OPEN' %}
-              <div class="small text-secondary">{{ trade.remaining_qty|floatformat:0 }} left</div>
-            {% endif %}
-          </td>
-          <td>
-            {% if trade.status == 'CLOSED' %}
-              <span class="{% if trade.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
-                ₹{{ trade.realized_pnl|floatformat:2 }}
-              </span>
-            {% else %}
-              <span class="text-secondary">₹{{ trade.unrealized_pnl|floatformat:2 }}</span>
-            {% endif %}
-          </td>
-          <td>
-            {% if trade.status != 'CLOSED' and trade.remaining_qty > 0 %}
-              <button
-                class="btn btn-sm btn-dark js-close"
-                type="button"
-                data-bs-toggle="modal"
-                data-bs-target="#closeModal"
-                data-id="{{ trade.id }}"
-                data-symbol="{{ trade.symbol }}"
-                data-qty="{{ trade.remaining_qty }}"
-              >Close</button>
-            {% endif %}
-          </td>
-        </tr>
-        {% empty %}
-        <tr>
-          <td colspan="10" class="text-center text-secondary py-5">
-            No trades yet. Set the sheet on <a href="{% url 'app_config' %}">Config</a>, then click <strong>Sync from Sheet</strong>.
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
+<form method="get" class="d-flex flex-wrap align-items-end gap-2 mb-3">
+  <div>
+    <label class="form-label small text-secondary mb-1" for="sort">Arrange by</label>
+    <select class="form-select form-select-sm" id="sort" name="sort">
+      <option value="position" {% if sort == "position" %}selected{% endif %}>Position</option>
+      <option value="symbol" {% if sort == "symbol" %}selected{% endif %}>Name</option>
+    </select>
   </div>
+  <div>
+    <label class="form-label small text-secondary mb-1" for="position">Position</label>
+    <select class="form-select form-select-sm" id="position" name="position">
+      <option value="" {% if not position_filter %}selected{% endif %}>All</option>
+      <option value="OPEN" {% if position_filter == "OPEN" %}selected{% endif %}>OPEN</option>
+      <option value="PARTIAL" {% if position_filter == "PARTIAL" %}selected{% endif %}>PARTIAL</option>
+      <option value="CLOSED" {% if position_filter == "CLOSED" %}selected{% endif %}>CLOSED</option>
+    </select>
+  </div>
+  <button class="btn btn-sm btn-outline-dark" type="submit">Apply</button>
+</form>
+
+<div class="card stat-card" id="active-trades">
+  {% include "trades/_trade_table.html" with rows=trades empty_message="No held names or names in the buy range. Closed and unheld names are in the list below." %}
 </div>
 
-<div class="modal fade" id="closeModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" class="modal-content" id="closeForm">
-      {% csrf_token %}
-      <div class="modal-header">
-        <h2 class="modal-title h5">Close <span id="closeSymbol"></span></h2>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <p class="text-secondary small">Full close uses remaining quantity. Enter a smaller qty for a partial close. This also updates the Google Sheet.</p>
-        <div class="mb-3">
-          <label class="form-label" for="id_quantity">Quantity</label>
-          <input class="form-control" type="number" step="0.0001" min="0.0001" name="quantity" id="id_quantity" required>
-        </div>
-        <div class="mb-0">
-          <label class="form-label" for="id_price">Close price</label>
-          <input class="form-control" type="number" step="0.0001" min="0.0001" name="price" id="id_price" required>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-dark">Mark closed</button>
-      </div>
-    </form>
+{% if idle_trades %}
+<div class="card stat-card mt-3" id="idle-trades">
+  <button
+    class="btn btn-link text-start text-secondary text-decoration-none w-100 px-3 py-3 d-flex justify-content-between align-items-center"
+    type="button"
+    data-bs-toggle="collapse"
+    data-bs-target="#idleTradesList"
+    aria-expanded="{% if position_filter == 'CLOSED' or not trades %}true{% else %}false{% endif %}"
+    aria-controls="idleTradesList"
+  >
+    <span>Closed &amp; unheld <span class="badge text-bg-secondary">{{ idle_trades|length }}</span></span>
+    <span class="small">Show / hide</span>
+  </button>
+  <div class="collapse{% if position_filter == 'CLOSED' or not trades %} show{% endif %} border-top" id="idleTradesList">
+    {% include "trades/_trade_table.html" with rows=idle_trades empty_message="" %}
   </div>
 </div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
@@ -181,14 +129,6 @@
     row.addEventListener("click", (event) => {
       if (event.target.closest("button, a, input, form")) return;
       window.location = row.dataset.href;
-    });
-  });
-  document.querySelectorAll(".js-close").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const id = btn.dataset.id;
-      document.getElementById("closeForm").action = `/trades/${id}/close/`;
-      document.getElementById("closeSymbol").textContent = btn.dataset.symbol;
-      document.getElementById("id_quantity").value = btn.dataset.qty;
     });
   });
 </script>

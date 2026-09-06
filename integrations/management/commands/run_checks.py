@@ -1,3 +1,5 @@
+"""manage.py run_checks — what host cron / the webhook invoke."""
+
 from django.core.management.base import BaseCommand
 
 from integrations.checker import run_checks
@@ -5,7 +7,7 @@ from integrations.checker import run_checks
 
 class Command(BaseCommand):
     help = (
-        "Sync the Google Sheet, refresh Kite holdings/LTP, and send Telegram alerts. "
+        "Sync the primary Google Sheet tab, refresh Kite holdings/LTP, and send Telegram alerts. "
         "Skips automatically outside weekday market hours unless --force is set."
     )
 

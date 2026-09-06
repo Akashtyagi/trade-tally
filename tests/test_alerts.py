@@ -1,3 +1,5 @@
+"""Telegram alert dedupe: one log per trade/type/IST day."""
+
 from decimal import Decimal
 
 import pytest

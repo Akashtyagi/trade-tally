@@ -1,4 +1,5 @@
 #!/bin/sh
+# Install weekday IST cron lines; replaces any previous trade-tally cron entries.
 set -e
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 FRAGMENT="$ROOT/scripts/crontab.fragment"

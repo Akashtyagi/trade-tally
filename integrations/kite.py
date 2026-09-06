@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 from decimal import Decimal
 
 from django.conf import settings
+from django.db.models import Q
 
-from trades.models import KiteSession
+from trades.models import HoldingSnapshot, KiteSession
 
+logger = logging.getLogger(__name__)
+
+# .env.example value — treated as "not configured" so local runs skip Kite.
 PLACEHOLDER_API_KEY = "your_api_key_here"
 
 
@@ -15,7 +20,15 @@ class KiteNotConfigured(RuntimeError):
     pass
 
 
+def is_permission_error(exc: BaseException) -> bool:
+    """Personal Kite apps often deny LTP/trades; treat that as empty data, not a crash."""
+    name = type(exc).__name__
+    text = str(exc)
+    return name in {"PermissionException", "ForbiddenException"} or "Insufficient permission" in text
+
+
 class KiteClient:
+    """Thin wrapper around kiteconnect. Methods here are the HTTP calls to api.kite.trade."""
     def __init__(
         self,
         api_key: str | None = None,
@@ -41,6 +54,7 @@ class KiteClient:
         return kite
 
     def exchange_request_token(self, request_token: str) -> dict:
+        """POST /session/token — one-shot request_token → access_token."""
         if not self.is_configured():
             raise KiteNotConfigured("Set KITE_API_KEY and KITE_API_SECRET in .env")
         kite = self._connect()
@@ -48,19 +62,36 @@ class KiteClient:
         return data
 
     def holdings(self, access_token: str) -> list[dict]:
+        """GET /portfolio/holdings. The daily token must already be on the session."""
         if not self.is_configured():
             return []
         return self._connect(access_token).holdings() or []
 
     def ltp(self, access_token: str, instruments: list[str]) -> dict:
+        """Live LTP. Personal (free) Kite apps do not allow this; returns {} instead of failing."""
         if not self.is_configured() or not instruments:
             return {}
-        return self._connect(access_token).ltp(instruments) or {}
+        try:
+            return self._connect(access_token).ltp(instruments) or {}
+        except Exception as exc:
+            if is_permission_error(exc):
+                logger.warning(
+                    "Kite LTP/quote is not allowed on this app (Personal apps have no market data). %s",
+                    exc,
+                )
+                return {}
+            raise
 
     def trades(self, access_token: str) -> list[dict]:
         if not self.is_configured():
             return []
-        return self._connect(access_token).trades() or []
+        try:
+            return self._connect(access_token).trades() or []
+        except Exception as exc:
+            if is_permission_error(exc):
+                logger.warning("Kite trades() not permitted: %s", exc)
+                return []
+            raise
 
     def orders(self, access_token: str) -> list[dict]:
         if not self.is_configured():
@@ -69,11 +100,13 @@ class KiteClient:
 
 
 def latest_access_token() -> str | None:
+    """Latest KiteSession row — local DB only, not a Kite call."""
     session = KiteSession.objects.order_by("-login_time").first()
     return session.access_token if session else None
 
 
 def parse_holdings(raw: list[dict]) -> list[dict]:
+    """Normalize a holdings() payload. No HTTP."""
     parsed = []
     for row in raw:
         symbol = str(row.get("tradingsymbol") or row.get("symbol") or "").upper()
@@ -92,6 +125,64 @@ def parse_holdings(raw: list[dict]) -> list[dict]:
             }
         )
     return parsed
+
+
+def store_holding_snapshots(parsed: list[dict], fetched_at) -> dict[tuple[str, str], dict]:
+    """Persist Kite holdings. Symbols missing from Kite are held qty 0."""
+    lookup = {(row["exchange"], row["symbol"]): row for row in parsed}
+    for row in parsed:
+        HoldingSnapshot.objects.update_or_create(
+            exchange=row["exchange"],
+            symbol=row["symbol"],
+            defaults={
+                "quantity": row["quantity"],
+                "average_price": row["average_price"],
+                "last_price": row["last_price"],
+                "fetched_at": fetched_at,
+            },
+        )
+    if lookup:
+        keep = Q()
+        for exchange, symbol in lookup:
+            keep |= Q(exchange=exchange, symbol=symbol)
+        # Sold-out names stay in the table at qty 0 so sheet sync does not revive them.
+        HoldingSnapshot.objects.exclude(keep).update(quantity=0, fetched_at=fetched_at)
+    else:
+        HoldingSnapshot.objects.update(quantity=0, fetched_at=fetched_at)
+    return lookup
+
+
+def aggregate_holding(lookup: dict, symbol: str) -> dict | None:
+    """In-memory NSE+BSE sum for one ticker. Does not call Kite."""
+    rows = [row for key, row in lookup.items() if key[1] == symbol]
+    if not rows:
+        return None
+    quantities = [Decimal(str(row.get("quantity") or 0)) for row in rows]
+    quantity = sum(quantities, Decimal("0"))
+    if quantity > 0:
+        cost = sum(
+            (
+                qty * Decimal(str(row.get("average_price") or 0))
+                for qty, row in zip(quantities, rows)
+            ),
+            Decimal("0"),
+        )
+        average_price = cost / quantity
+    else:
+        average_price = next(
+            (Decimal(str(row["average_price"])) for row in rows if row.get("average_price")),
+            Decimal("0"),
+        )
+    priced = [
+        row["last_price"]
+        for qty, row in zip(quantities, rows)
+        if row.get("last_price") is not None and qty > 0
+    ] or [row["last_price"] for row in rows if row.get("last_price") is not None]
+    return {
+        "quantity": quantity,
+        "average_price": average_price,
+        "last_price": priced[0] if priced else None,
+    }
 
 
 def parse_fills(raw: list[dict]) -> list[dict]:

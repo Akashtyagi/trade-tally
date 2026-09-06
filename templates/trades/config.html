@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load sheets %}
 
 {% block title %}Config · Trade Tally{% endblock %}
 
@@ -6,17 +7,13 @@
 <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
   <div>
     <h1 class="h3 mb-0">Config</h1>
-    <p class="text-secondary mb-0">Non-secret settings. Bot token, Kite keys, and Google credentials stay in <code>.env</code>.</p>
+    <p class="text-secondary mb-0">Each Google tab is its own dashboard. Only the primary tab is synced by cron. Sheet list is stored in <code>data/sheets.json</code>.</p>
   </div>
-  <form method="post" action="{% url 'sync_sheet' %}">
-    {% csrf_token %}
-    <input type="hidden" name="next" value="config">
-    <button class="btn btn-outline-dark" type="submit">Sync from Sheet</button>
-  </form>
 </div>
 
-<form method="post" class="mb-5">
+<form method="post" class="mb-4">
   {% csrf_token %}
+  <input type="hidden" name="action" value="save">
   {{ form.non_field_errors }}
 
   <div class="card stat-card mb-4">
@@ -43,64 +40,98 @@
 
   <div class="card stat-card mb-4">
     <div class="card-body">
-      <h2 class="h5">Google Sheet</h2>
-      <p class="small text-secondary">Spreadsheet ID is the long value in the URL after <code>/d/</code>. Worksheet is the tab name (e.g. Aug24-27).</p>
+      <h2 class="h5">Default Google workbook</h2>
+      <p class="small text-secondary">Spreadsheet ID is the long value in the URL after <code>/d/</code>. Tabs below can override it if they live in a different workbook.</p>
+      <label class="form-label" for="{{ form.google_spreadsheet_id.id_for_label }}">{{ form.google_spreadsheet_id.label }}</label>
+      {{ form.google_spreadsheet_id }}
+      {% if form.google_spreadsheet_id.errors %}<div class="text-danger small">{{ form.google_spreadsheet_id.errors }}</div>{% endif %}
+    </div>
+  </div>
+
+  <input type="hidden" name="sheet_count" value="{{ sheets|length }}">
+
+  {% for sheet in sheets %}
+  <div class="card stat-card mb-4">
+    <div class="card-body">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
+        <h2 class="h5 mb-0">{{ sheet.label }}</h2>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="primary" id="primary_{{ forloop.counter0 }}" value="{{ sheet.slug }}" {% if sheet.slug == primary_slug %}checked{% endif %}>
+          <label class="form-check-label" for="primary_{{ forloop.counter0 }}">Primary (cron)</label>
+        </div>
+      </div>
+      <input type="hidden" name="sheet_slug_{{ forloop.counter0 }}" value="{{ sheet.slug }}">
       <div class="row g-3">
-        <div class="col-md-8">
-          <label class="form-label" for="{{ form.google_spreadsheet_id.id_for_label }}">{{ form.google_spreadsheet_id.label }}</label>
-          {{ form.google_spreadsheet_id }}
-          {% if form.google_spreadsheet_id.errors %}<div class="text-danger small">{{ form.google_spreadsheet_id.errors }}</div>{% endif %}
+        <div class="col-md-4">
+          <label class="form-label">Dashboard label</label>
+          <input class="form-control" name="sheet_label_{{ forloop.counter0 }}" value="{{ sheet.label }}">
         </div>
         <div class="col-md-4">
-          <label class="form-label" for="{{ form.google_worksheet.id_for_label }}">{{ form.google_worksheet.label }}</label>
-          {{ form.google_worksheet }}
-          {% if form.google_worksheet.errors %}<div class="text-danger small">{{ form.google_worksheet.errors }}</div>{% endif %}
+          <label class="form-label">Worksheet / tab name</label>
+          <input class="form-control" name="sheet_worksheet_{{ forloop.counter0 }}" value="{{ sheet.worksheet }}">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Spreadsheet ID override</label>
+          <input class="form-control" name="sheet_spreadsheet_{{ forloop.counter0 }}" value="{{ sheet.spreadsheet_id }}" placeholder="blank = default workbook">
         </div>
       </div>
-    </div>
-  </div>
 
-  <div class="card stat-card mb-4">
-    <div class="card-body">
-      <h2 class="h5">Summary cells</h2>
-      <p class="small text-secondary">A1-style cells for corpus, risk %, current value, remaining balance (for example A5, B2, N2, K2).</p>
+      <h3 class="h6 mt-4">Summary cells</h3>
       <div class="row g-3">
-        {% for field in form %}
-          {% if field.name|slice:":4" == "sum_" %}
-          <div class="col-md-3">
-            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-          </div>
-          {% endif %}
+        {% for key, label in summary_fields %}
+        <div class="col-md-3">
+          <label class="form-label">{{ label }}</label>
+          <input class="form-control" name="sheet_{{ forloop.parentloop.counter0 }}_sum_{{ key }}" value="{{ sheet.summary_map|dict_get:key }}" placeholder="A1 cell">
+        </div>
         {% endfor %}
       </div>
-    </div>
-  </div>
 
-  <div class="card stat-card mb-4">
-    <div class="card-body">
-      <h2 class="h5">Column mapping</h2>
-      <p class="small text-secondary">Sheet header text for each trade field. Leave blank to use the built-in aliases (Share, Current Quantity, and so on).</p>
+      <h3 class="h6 mt-4">Column mapping</h3>
       <div class="row g-3">
-        {% for field in form %}
-          {% if field.name|slice:":4" == "col_" %}
-          <div class="col-md-4">
-            <label class="form-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
-            {{ field }}
-          </div>
-          {% endif %}
+        {% for key, label in column_fields %}
+        <div class="col-md-4">
+          <label class="form-label">{{ label }}</label>
+          <input class="form-control" name="sheet_{{ forloop.parentloop.counter0 }}_col_{{ key }}" placeholder="Sheet column header" value="{{ sheet.column_map|dict_get:key }}">
+        </div>
         {% endfor %}
       </div>
+
+      {% if sheets|length > 1 %}
+      <div class="form-check mt-3">
+        <input class="form-check-input" type="checkbox" name="delete_{{ forloop.counter0 }}" id="delete_{{ forloop.counter0 }}">
+        <label class="form-check-label text-danger" for="delete_{{ forloop.counter0 }}">Remove this dashboard</label>
+      </div>
+      {% endif %}
     </div>
   </div>
+  {% endfor %}
 
   <button class="btn btn-dark" type="submit">Save config</button>
 </form>
 
-{% if app_settings.last_sheet_sync_at or app_settings.last_zerodha_sync_at %}
-<p class="small text-secondary">
-  {% if app_settings.last_sheet_sync_at %}Last sheet sync: {{ app_settings.last_sheet_sync_at }}.{% endif %}
-  {% if app_settings.last_zerodha_sync_at %}Last Zerodha sync: {{ app_settings.last_zerodha_sync_at }}.{% endif %}
-</p>
-{% endif %}
+<div class="card stat-card mb-4">
+  <div class="card-body">
+    <h2 class="h5">Add a tab</h2>
+    <p class="small text-secondary">Same Google Sheet (another worksheet) or a different spreadsheet ID.</p>
+    <form method="post" class="row g-3 align-items-end">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="add_sheet">
+      <div class="col-md-4">
+        <label class="form-label" for="{{ add_form.worksheet.id_for_label }}">{{ add_form.worksheet.label }}</label>
+        {{ add_form.worksheet }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="{{ add_form.label.id_for_label }}">{{ add_form.label.label }}</label>
+        {{ add_form.label }}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label" for="{{ add_form.spreadsheet_id.id_for_label }}">{{ add_form.spreadsheet_id.label }}</label>
+        {{ add_form.spreadsheet_id }}
+      </div>
+      <div class="col-md-2">
+        <button class="btn btn-outline-dark w-100" type="submit">Add sheet</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}

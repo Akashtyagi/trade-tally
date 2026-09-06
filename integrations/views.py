@@ -1,3 +1,5 @@
+"""Internal HTTP hooks (cron). Not part of the public UI."""
+
 import hmac
 import logging
 
@@ -12,6 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _authorized(request) -> bool:
+    # Timing-safe compare so a leaked prefix of CRON_SECRET is not enough.
     provided = request.headers.get("X-Cron-Secret") or request.POST.get("token") or ""
     expected = settings.CRON_SECRET or ""
     return hmac.compare_digest(str(provided), str(expected))

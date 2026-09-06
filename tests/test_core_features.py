@@ -18,6 +18,7 @@ from integrations.checker import evaluate_open_trades, run_checks
 from integrations.scheduler import scheduled_check
 from integrations.telegram import send_message
 from trades.models import TradeStatus
+from trades.money import format_inr
 from trades.services import close_trade, dashboard_stats
 
 PNL_KEYS = {"total_trades", "total_invested", "realized_pnl", "unrealized_pnl", "net_pnl"}
@@ -36,11 +37,11 @@ def market_closed(monkeypatch):
 def _stub_fetch(monkeypatch, calls):
     monkeypatch.setattr(
         "integrations.checker.sheets_mod.sync_from_sheet",
-        lambda: calls.append("sheet") or [],
+        lambda *a, **k: calls.append("sheet") or [],
     )
     monkeypatch.setattr(
         "integrations.checker.refresh_holdings_and_prices",
-        lambda: calls.append("prices") or {},
+        lambda *a, **k: calls.append("prices") or {},
     )
 
 
@@ -158,8 +159,7 @@ def test_dashboard_exposes_net_pnl_to_the_ui(client, trade):
     assert PNL_KEYS <= stats.keys()
     assert stats["net_pnl"] == stats["realized_pnl"] + stats["unrealized_pnl"]
     html = response.content.decode()
-    # Show the number somewhere; do not assert labels or CSS.
-    assert f"{stats['net_pnl']:.2f}" in html or str(int(stats["net_pnl"])) in html
+    assert format_inr(stats["net_pnl"]) in html
 
 
 @pytest.mark.django_db

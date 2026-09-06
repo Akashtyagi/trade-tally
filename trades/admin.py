@@ -1,3 +1,5 @@
+"""Django admin list views. Access tokens are stored but not shown in list_display."""
+
 from django.contrib import admin
 
 from trades.models import (
@@ -7,6 +9,7 @@ from trades.models import (
     HoldingSnapshot,
     KiteFill,
     KiteSession,
+    TradebookFill,
     TradeIdea,
 )
 
@@ -15,6 +18,7 @@ from trades.models import (
 class TradeIdeaAdmin(admin.ModelAdmin):
     list_display = (
         "symbol",
+        "sheet_slug",
         "exchange",
         "status",
         "recommended_qty",
@@ -23,16 +27,18 @@ class TradeIdeaAdmin(admin.ModelAdmin):
         "last_ltp",
         "opened_on",
         "target",
+        "target_2",
+        "tcp_percent",
         "stop_loss",
     )
-    list_filter = ("status", "exchange")
+    list_filter = ("status", "exchange", "sheet_slug")
     search_fields = ("symbol",)
 
 
 @admin.register(CloseEvent)
 class CloseEventAdmin(admin.ModelAdmin):
-    list_display = ("trade", "quantity", "price", "realized_pnl", "created_at")
-    list_filter = ("created_at",)
+    list_display = ("trade", "quantity", "price", "realized_pnl", "source", "created_at")
+    list_filter = ("source", "created_at")
 
 
 @admin.register(HoldingSnapshot)
@@ -55,6 +61,13 @@ class KiteSessionAdmin(admin.ModelAdmin):
 class KiteFillAdmin(admin.ModelAdmin):
     list_display = ("symbol", "side", "quantity", "price", "filled_at", "fetched_at")
     list_filter = ("side", "exchange")
+
+
+@admin.register(TradebookFill)
+class TradebookFillAdmin(admin.ModelAdmin):
+    list_display = ("symbol", "side", "quantity", "price", "trade_date", "source_sheet", "tracked")
+    list_filter = ("side", "tracked", "source_sheet")
+    search_fields = ("symbol", "trade_id", "order_id")
 
 
 @admin.register(AppSettings)

@@ -98,3 +98,14 @@ uv run pytest
 - [ ] Kite connected the same trading day from the dashboard
 - [ ] Host crontab installed; `/tmp/trade-tally-cron.log` shows a skip after hours and a real run in session
 - [ ] Mac timezone IST (or crontab hours converted); Mac awake 09:15–15:30 on weekdays
+
+## 5.7 Tradebook ingest
+
+After you add one or more **Tradebook - …** tabs (Zerodha tradebook CSV pasted into the same spreadsheet):
+
+```bash
+chmod +x scripts/ingest-tradebook.sh
+./scripts/ingest-tradebook.sh
+```
+
+Rebuild the container first if you just pulled new code (`podman compose -f compose.yml up -d --build`). The script prefers `podman exec trade-tally` so the dashboard database is updated. Options: `--dry-run`, `--no-close`, `--csv-dir zerodha_files`.

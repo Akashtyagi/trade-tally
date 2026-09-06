@@ -1,3 +1,5 @@
+"""Mounted under /internal/ — see config.urls."""
+
 from django.urls import path
 
 from integrations import views

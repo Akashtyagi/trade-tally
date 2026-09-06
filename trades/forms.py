@@ -1,3 +1,5 @@
+"""Dashboard and config forms. Secrets stay in .env, not these fields."""
+
 from decimal import Decimal
 
 from django import forms
@@ -10,6 +12,7 @@ from trades.models import (
     AppSettings,
     TradeIdea,
 )
+from trades.sheet_config import list_sheets, slugify_worksheet, unique_slug
 
 
 class CloseTradeForm(forms.Form):
@@ -46,60 +49,88 @@ class AppConfigForm(forms.ModelForm):
             "telegram_chat_id",
             "telegram_alerts_enabled",
             "google_spreadsheet_id",
-            "google_worksheet",
         ]
         widgets = {
             "telegram_chat_id": forms.TextInput(attrs={"class": "form-control", "placeholder": "123456789"}),
             "google_spreadsheet_id": forms.TextInput(
                 attrs={"class": "form-control", "placeholder": "from the sheet URL /d/ID/edit"}
             ),
-            "google_worksheet": forms.TextInput(
-                attrs={"class": "form-control", "placeholder": "Aug24-27 or * for first tab"}
-            ),
         }
         labels = {
             "telegram_chat_id": "Telegram chat ID",
             "telegram_alerts_enabled": "Send Telegram alerts",
-            "google_spreadsheet_id": "Google spreadsheet ID",
-            "google_worksheet": "Worksheet / tab name",
+            "google_spreadsheet_id": "Default Google spreadsheet ID",
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["telegram_alerts_enabled"].widget.attrs["class"] = "form-check-input"
-        instance: AppSettings | None = kwargs.get("instance")
-        col = (instance.column_map if instance else {}) or {}
-        summary = (instance.summary_map if instance else {}) or {}
-        for key, label in TRADE_COLUMN_FIELDS:
-            self.fields[f"col_{key}"] = forms.CharField(
-                label=label,
-                required=False,
-                initial=col.get(key, ""),
-                widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Sheet column header"}),
-            )
-        for key, label in SUMMARY_CELL_FIELDS:
-            self.fields[f"sum_{key}"] = forms.CharField(
-                label=label,
-                required=False,
-                initial=summary.get(key, ""),
-                widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "A1 cell e.g. A5 or B2"}),
-            )
 
-    def save(self, commit=True):
-        obj: AppSettings = super().save(commit=False)
-        obj.column_map = {
-            key: (self.cleaned_data.get(f"col_{key}") or "").strip()
+
+class AddSheetForm(forms.Form):
+    worksheet = forms.CharField(
+        label="Tab / worksheet name",
+        max_length=128,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Aug24-27"}),
+    )
+    label = forms.CharField(
+        label="Dashboard label",
+        max_length=128,
+        required=False,
+        widget=forms.TextInput(attrs={"class": "form-control", "placeholder": "Same as tab name if blank"}),
+    )
+    spreadsheet_id = forms.CharField(
+        label="Spreadsheet ID override",
+        max_length=128,
+        required=False,
+        widget=forms.TextInput(
+            attrs={"class": "form-control", "placeholder": "Leave blank to use the default workbook"}
+        ),
+    )
+
+
+def sheets_from_post(post) -> tuple[list[dict], str]:
+    """Rebuild the sheet catalog from the config form POST."""
+    existing = list_sheets()
+    count = int(post.get("sheet_count") or 0)
+    sheets = []
+    used_slugs: set[str] = set()
+    for i in range(count):
+        if post.get(f"delete_{i}"):
+            continue
+        worksheet = (post.get(f"sheet_worksheet_{i}") or "").strip()
+        if not worksheet:
+            continue
+        slug = slugify_worksheet(post.get(f"sheet_slug_{i}") or worksheet)
+        if slug in used_slugs:
+            slug = unique_slug(worksheet, used_slugs)
+        used_slugs.add(slug)
+        prev = next((s for s in existing if s["slug"] == slug), {})
+        column_map = {
+            key: (post.get(f"sheet_{i}_col_{key}") or "").strip()
             for key, _label in TRADE_COLUMN_FIELDS
-            if (self.cleaned_data.get(f"col_{key}") or "").strip()
+            if (post.get(f"sheet_{i}_col_{key}") or "").strip()
         }
-        obj.summary_map = {
-            key: (self.cleaned_data.get(f"sum_{key}") or "").strip()
+        summary_map = {
+            key: (post.get(f"sheet_{i}_sum_{key}") or "").strip()
             for key, _label in SUMMARY_CELL_FIELDS
-            if (self.cleaned_data.get(f"sum_{key}") or "").strip()
+            if (post.get(f"sheet_{i}_sum_{key}") or "").strip()
         }
-        if commit:
-            obj.save()
-        return obj
+        sheets.append(
+            {
+                "slug": slug,
+                "label": (post.get(f"sheet_label_{i}") or worksheet).strip(),
+                "worksheet": worksheet,
+                "spreadsheet_id": (post.get(f"sheet_spreadsheet_{i}") or "").strip(),
+                "column_map": column_map,
+                "summary_map": summary_map,
+                "last_sheet_sync_at": prev.get("last_sheet_sync_at"),
+                "last_zerodha_sync_at": prev.get("last_zerodha_sync_at"),
+                "portfolio": prev.get("portfolio") or {},
+            }
+        )
+    primary = slugify_worksheet(post.get("primary") or "")
+    return sheets, primary
 
 
 def telegram_token_configured() -> bool:

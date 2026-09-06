@@ -23,6 +23,7 @@ def scheduled_check():
 
 
 def start_scheduler() -> BackgroundScheduler | None:
+    # Host crontab is the supported path; keep this off in Podman (ENABLE_SCHEDULER=false).
     global _scheduler
     if not settings.ENABLE_SCHEDULER:
         return None

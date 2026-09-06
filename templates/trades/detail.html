@@ -1,21 +1,22 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load sheets %}
 
 {% block title %}{{ trade.symbol }} · Trade Tally{% endblock %}
 
 {% block content %}
-<p class="mb-3"><a href="{% url 'dashboard' %}">&larr; All trades</a></p>
+<p class="mb-3"><a href="{% if sheet %}{% sheet_home sheet.slug %}{% else %}{% url 'dashboard' %}{% endif %}">&larr; {{ sheet.label|default:"All trades" }}</a></p>
 
 <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-4">
   <div>
     <h1 class="h3 mb-1">{{ trade.exchange }}:{{ trade.symbol }}</h1>
     <p class="text-secondary mb-0">
       Sheet row {{ trade.sheet_row }}
+      {% if sheet %}· {{ sheet.label }}{% endif %}
       · active {{ trade.holding_age }}
       {% if trade.opened_on %}· opened {{ trade.opened_on }}{% endif %}
     </p>
   </div>
-  <span class="badge text-bg-{% if trade.status == 'CLOSED' %}secondary{% elif trade.status == 'PARTIAL' %}warning{% else %}primary{% endif %} fs-6">
+  <span class="badge text-bg-{% if trade.status == 'CLOSED' %}{% if trade.realized_pnl >= 0 %}success{% else %}danger{% endif %}{% elif trade.status == 'PARTIAL' %}warning{% else %}primary{% endif %} fs-6">
     {{ trade.status }}
   </span>
 </div>
@@ -33,7 +34,7 @@
     <div class="card stat-card">
       <div class="card-body">
         <div class="text-secondary small">Last price</div>
-        <div class="fs-5 fw-semibold">{% if trade.last_ltp %}₹{{ trade.last_ltp|floatformat:2|intcomma }}{% else %}—{% endif %}</div>
+        <div class="fs-5 fw-semibold">{% if trade.last_ltp %}{{ trade.last_ltp|inr }}{% else %}—{% endif %}</div>
       </div>
     </div>
   </div>
@@ -42,7 +43,7 @@
       <div class="card-body">
         <div class="text-secondary small">Unrealized P/L</div>
         <div class="fs-5 fw-semibold {% if trade.unrealized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
-          ₹{{ trade.unrealized_pnl|floatformat:2|intcomma }}
+          {{ trade.unrealized_pnl|inr }}
         </div>
       </div>
     </div>
@@ -52,7 +53,7 @@
       <div class="card-body">
         <div class="text-secondary small">Realized P/L</div>
         <div class="fs-5 fw-semibold {% if trade.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
-          ₹{{ trade.realized_pnl|floatformat:2|intcomma }}
+          {{ trade.realized_pnl|inr }}
         </div>
       </div>
     </div>
@@ -66,17 +67,23 @@
         <h2 class="h6 text-secondary">Plan</h2>
         <dl class="row mb-0">
           <dt class="col-sm-4">Buy range</dt>
-          <dd class="col-sm-8">{{ trade.buy_low|floatformat:2 }} – {{ trade.buy_high|floatformat:2 }}</dd>
+          <dd class="col-sm-8">{{ trade.buy_low|inr }} – {{ trade.buy_high|inr }}</dd>
           <dt class="col-sm-4">Avg buy</dt>
-          <dd class="col-sm-8">{% if trade.holding_avg_price %}₹{{ trade.holding_avg_price|floatformat:2 }}{% else %}₹{{ trade.avg_buy|floatformat:2 }}{% endif %}</dd>
-          <dt class="col-sm-4">Target</dt>
-          <dd class="col-sm-8">{{ trade.target|floatformat:2 }}</dd>
+          <dd class="col-sm-8">{% if trade.holding_avg_price %}{{ trade.holding_avg_price|inr }}{% else %}{{ trade.avg_buy|inr }}{% endif %}</dd>
+          <dt class="col-sm-4">TCP</dt>
+          <dd class="col-sm-8">{% if tcp_percent is not None %}{{ tcp_percent|floatformat:1 }}%{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">First target</dt>
+          <dd class="col-sm-8">{% if trade.target %}{{ trade.target|inr }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Second target</dt>
+          <dd class="col-sm-8">{% if trade.target_2 %}{{ trade.target_2|inr }}{% else %}—{% endif %}</dd>
+          <dt class="col-sm-4">Third target</dt>
+          <dd class="col-sm-8">{% if trade.target_3 %}{{ trade.target_3|inr }}{% else %}—{% endif %}</dd>
           <dt class="col-sm-4">Stop loss</dt>
-          <dd class="col-sm-8">{{ trade.stop_loss|floatformat:2 }}</dd>
+          <dd class="col-sm-8">{{ trade.stop_loss|inr }}</dd>
           <dt class="col-sm-4">Remaining</dt>
           <dd class="col-sm-8">{{ trade.remaining_qty|floatformat:0 }}</dd>
           <dt class="col-sm-4">Closed qty</dt>
-          <dd class="col-sm-8">{{ trade.closed_qty|floatformat:0 }}{% if trade.closed_price %} @ {{ trade.closed_price|floatformat:2 }}{% endif %}</dd>
+          <dd class="col-sm-8">{{ trade.closed_qty|floatformat:0 }}{% if trade.closed_price %} @ {{ trade.closed_price|inr }}{% endif %}</dd>
           {% if trade.notes %}
           <dt class="col-sm-4">Comments</dt>
           <dd class="col-sm-8">{{ trade.notes }}</dd>
@@ -96,14 +103,38 @@
             <tr>
               <td>{{ event.created_at }}</td>
               <td>{{ event.quantity|floatformat:0 }}</td>
-              <td>₹{{ event.price|floatformat:2 }}</td>
-              <td class="{% if event.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">₹{{ event.realized_pnl|floatformat:2 }}</td>
+              <td>{{ event.price|inr }}</td>
+              <td class="{% if event.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">{{ event.realized_pnl|inr }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
         {% else %}
         <p class="text-secondary mb-0">No closes recorded in the app yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card stat-card mb-3">
+      <div class="card-body">
+        <h2 class="h6 text-secondary">Tradebook fills</h2>
+        {% if tradebook_fills %}
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Date</th><th>Side</th><th>Qty</th><th>Price</th><th>Source</th></tr></thead>
+          <tbody>
+            {% for fill in tradebook_fills %}
+            <tr>
+              <td>{{ fill.trade_date }}{% if fill.filled_at %}<div class="small text-secondary">{{ fill.filled_at }}</div>{% endif %}</td>
+              <td>{{ fill.side }}</td>
+              <td>{{ fill.quantity|floatformat:0 }}</td>
+              <td>{{ fill.price|inr }}</td>
+              <td class="small text-secondary">{{ fill.source_sheet|default:"—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="text-secondary mb-0">No tradebook rows for this symbol yet. Run <code>scripts/ingest-tradebook.sh</code> after adding a <strong>Tradebook - …</strong> tab.</p>
         {% endif %}
       </div>
     </div>
@@ -119,7 +150,7 @@
             <tr>
               <td>{{ fill.side }}</td>
               <td>{{ fill.quantity|floatformat:0 }}</td>
-              <td>₹{{ fill.price|floatformat:2 }}</td>
+              <td>{{ fill.price|inr }}</td>
               <td>{{ fill.filled_at|default:"—" }}</td>
             </tr>
             {% endfor %}
@@ -166,6 +197,24 @@
       </div>
     </div>
     {% endif %}
+
+    <div class="card stat-card mt-3 border-danger">
+      <div class="card-body">
+        <h2 class="h6 text-danger">Delete trade</h2>
+        <p class="small text-secondary mb-3">
+          Removes {{ trade.symbol }} from the dashboard and clears its row(s) on the Google Sheet
+          (open and completed blocks). This cannot be undone.
+        </p>
+        <form
+          method="post"
+          action="{% url 'delete_trade' trade.pk %}"
+          onsubmit="return confirm('Delete {{ trade.symbol }} from the app and Google Sheet?');"
+        >
+          {% csrf_token %}
+          <button class="btn btn-outline-danger w-100" type="submit">Delete trade</button>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

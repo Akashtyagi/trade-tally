@@ -1,13 +1,23 @@
+"""Google Sheet header/block parsing and writeback cell ranges."""
+
 from decimal import Decimal
+
+import pytest
 
 from integrations.sheets import (
     COMPLETED_ROW_OFFSET,
     find_header_row,
+    format_qty,
     header_index_map,
+    held_qty_differs,
+    ltp_from_sheet_pnl,
     parse_buy_range,
     parse_decimal,
     parse_portfolio_config,
     parse_rows,
+    parse_tcp,
+    write_held_quantities_if_changed,
+    write_zerodha_holdings,
     writeback_updates,
 )
 
@@ -130,4 +140,191 @@ def test_parse_live_workbook_layout():
     config = parse_portfolio_config(values)
     assert config["total_budget"] == Decimal("1200000.00")
     assert config["risk_percentage"] == Decimal("8")
+    assert penind_open["tcp"] == Decimal("1.39")
+
+
+def test_parse_tcp_and_extra_targets():
+    assert parse_tcp("1.39%") == Decimal("1.39")
+    assert parse_tcp("72000 : 6.0%") == Decimal("6.0")
+    header = [
+        "S No",
+        "Share",
+        "Entry Price",
+        "Quantity",
+        "Maximum Shares Recom.",
+        "Buy Range",
+        "STOP LOSS",
+        "FIRST TARGET",
+        "SECOND TARGET",
+        "THRID TARGET",
+        "Total Captial Percentage",
+        "S No",
+        "Share",
+        "Quantity",
+        "Exit Price",
+    ]
+    data = [
+        "1",
+        "AMBER",
+        "8320",
+        "0",
+        "10",
+        "8320-8320",
+        "6700",
+        "9999",
+        "11000",
+        "12000",
+        "6.0%",
+        "",
+        "",
+        "",
+        "",
+    ]
+    parsed = parse_rows([header, data])
+    open_row = next(r for r in parsed if r["status"] == "OPEN")
+    assert open_row["target"] == Decimal("9999")
+    assert open_row["target_2"] == Decimal("11000")
+    assert open_row["target_3"] == Decimal("12000")
+    assert open_row["tcp"] == Decimal("6.0")
+
+
+def test_parse_maximum_shares_and_quantity_headers():
+    """Live Aug24-27 tab uses Quantity + Maximum Shares Recom., not Current Quantity."""
+    header = (
+        [""] * 9
+        + [
+            "S No",
+            "Date",
+            "Share",
+            "Entry Price",
+            "Quantity",
+            "Maximum Shares Recom.",
+            "Buy Range",
+            "STOP LOSS",
+            "FIRST TARGET",
+            "Comments",
+            "S No",
+            "Share",
+            "Quantity",
+            "Exit Price",
+        ]
+    )
+    data = (
+        [""] * 9
+        + [
+            "1",
+            "7-Aug-2024",
+            "PENIND",
+            "175.50",
+            "95",
+            "137",
+            "155-180",
+            "100",
+            "200",
+            "held",
+            "1",
+            "PENIND",
+            "30",
+            "213.78",
+        ]
+    )
+    parsed = parse_rows([header, data])
+    open_row = next(r for r in parsed if r["status"] == "OPEN")
+    assert open_row["qty"] == Decimal("137")
+    assert open_row["current_qty"] == Decimal("95")
+    closed_row = next(r for r in parsed if r["status"] == "CLOSED")
+    assert closed_row["closed_qty"] == Decimal("30")
+    assert closed_row["closed_price"] == Decimal("213.78")
+
+
+def test_ltp_from_googlefinance_current_pnl():
+    assert ltp_from_sheet_pnl(Decimal("1202"), Decimal("15.5")) == Decimal("1217.5")
+    assert ltp_from_sheet_pnl(Decimal("820"), Decimal("0")) == Decimal("820")
+    assert ltp_from_sheet_pnl(Decimal("820"), Decimal("24054"), Decimal("211")) == Decimal("934")
+    rows = parse_rows(
+        [
+            ["Share", "Entry Price", "Maximum Shares Recom.", "Current P/L"],
+            ["AGARIND", "1202", "40", "12.5"],
+        ]
+    )
+    assert rows[0]["last_ltp"] == Decimal("1214.5")
+
+
+def test_held_qty_differs_compares_decimals():
+    assert not held_qty_differs("95.0", Decimal("95"))
+    assert not held_qty_differs("", Decimal("0"))
+    assert held_qty_differs("95", Decimal("40"))
+    assert held_qty_differs("", Decimal("40"))
+    assert format_qty(Decimal("40.0000")) == "40"
+
+
+@pytest.mark.django_db
+def test_write_held_qty_only_when_sheet_differs(trade, monkeypatch):
+    values = [
+        ["S No", "Share", "Quantity"],
+        ["1", "INFY", "50"],
+    ]
+    captured = []
+
+    class FakeWs:
+        def get_all_values(self):
+            return values
+
+        def batch_update(self, updates, value_input_option=None):
+            captured.extend(updates)
+
+    monkeypatch.setattr("trades.runtime_config.spreadsheet_id", lambda slug=None: "sheet")
+    monkeypatch.setattr("integrations.sheets._worksheet", lambda slug=None: FakeWs())
+
+    same = write_held_quantities_if_changed([(trade, Decimal("50"))])
+    assert same == []
+    assert captured == []
+
+    changed = write_held_quantities_if_changed([(trade, Decimal("40"))])
+    assert changed
+    assert captured[0]["values"][0][0] == "40"
+
+
+@pytest.mark.django_db
+def test_write_zerodha_holdings_is_one_read_and_one_write(trade, monkeypatch):
+    from trades.models import TradeIdea, TradeStatus
+
+    other = TradeIdea.objects.create(
+        sheet_row=3,
+        symbol="BIOCON",
+        recommended_qty=Decimal("209"),
+        remaining_qty=Decimal("0"),
+        buy_low=Decimal("340"),
+        buy_high=Decimal("340"),
+        status=TradeStatus.OPEN,
+        sheet_slug="aug24-27",
+    )
+    values = [
+        ["Share", "Quantity", "Total Investment"],
+        ["INFY", "50", "72500"],
+        ["BIOCON", "0", "0"],
+    ]
+    reads = []
+    writes = []
+
+    class FakeWs:
+        def get_all_values(self):
+            reads.append(1)
+            return values
+
+        def batch_update(self, updates, value_input_option=None):
+            writes.append(list(updates))
+
+    monkeypatch.setattr("trades.runtime_config.spreadsheet_id", lambda slug=None: "sheet")
+    monkeypatch.setattr("integrations.sheets._worksheet", lambda slug=None: FakeWs())
+
+    updates = write_zerodha_holdings([(trade, Decimal("40")), (other, Decimal("28"))])
+    assert len(reads) == 1
+    assert len(writes) == 1
+    cells = {item["range"]: item["values"][0][0] for item in writes[0]}
+    assert cells["B2"] == "40"
+    assert cells["B3"] == "28"
+    assert Decimal(cells["C2"]) == Decimal("58000")
+    assert Decimal(cells["C3"]) == Decimal("9520")
+    assert len(updates) == 4
 

@@ -1,3 +1,5 @@
+"""Market hours, buy-zone / target / SL rules, and run_checks skip paths."""
+
 from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
@@ -7,6 +9,7 @@ from integrations.checker import (
     hit_stop_loss,
     hit_target,
     is_in_buy_zone,
+    is_near_buy_zone,
     is_underweight,
     within_market_hours,
 )
@@ -20,6 +23,8 @@ def test_underweight_and_buy_zone():
     assert not is_underweight(Decimal("50"), Decimal("50"))
     assert is_in_buy_zone(Decimal("1450"), Decimal("1400"), Decimal("1500"))
     assert not is_in_buy_zone(Decimal("1510"), Decimal("1400"), Decimal("1500"))
+    assert is_near_buy_zone(Decimal("1650"), Decimal("1400"), Decimal("1500"))
+    assert not is_near_buy_zone(Decimal("1800"), Decimal("1400"), Decimal("1500"))
 
 
 def test_target_and_stop_loss():
@@ -134,9 +139,9 @@ def test_run_checks_force_ignores_market_hours(monkeypatch):
     from integrations.checker import run_checks
 
     monkeypatch.setattr("integrations.checker.within_market_hours", lambda: False)
-    monkeypatch.setattr("integrations.checker.sheets_mod.sync_from_sheet", lambda: [])
-    monkeypatch.setattr("integrations.checker.refresh_holdings_and_prices", lambda: {})
-    monkeypatch.setattr("integrations.checker.evaluate_open_trades", lambda send=None: [])
+    monkeypatch.setattr("integrations.checker.sheets_mod.sync_from_sheet", lambda *a, **k: [])
+    monkeypatch.setattr("integrations.checker.refresh_holdings_and_prices", lambda *a, **k: {})
+    monkeypatch.setattr("integrations.checker.evaluate_open_trades", lambda *a, **k: [])
     result = run_checks(force=True)
     assert "skipped" not in result
     assert result["alerts"] == 0

@@ -1,3 +1,5 @@
+"""Manual close math, remaining qty, and sheet writeback payload."""
+
 from decimal import Decimal
 
 import pytest

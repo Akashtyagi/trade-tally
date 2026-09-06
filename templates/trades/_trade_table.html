@@ -1,0 +1,47 @@
+{% load sheets %}
+<div class="table-responsive">
+  <table class="table table-hover align-middle mb-0">
+    <thead class="table-light">
+      <tr>
+        <th>Symbol</th>
+        <th>Plan / held</th>
+        <th>Buy range</th>
+        <th>LTP</th>
+        <th>Target</th>
+        <th>SL</th>
+        <th>Active for</th>
+        <th>P/L</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for trade in rows %}
+      <tr class="row-{{ trade.row_tone }} trade-row" data-href="{% url 'trade_detail' trade.pk %}">
+        <td>
+          <a class="fw-semibold text-decoration-none text-dark" href="{% url 'trade_detail' trade.pk %}">{{ trade.symbol }}</a>
+        </td>
+        <td class="{% if trade.ltp_in_buy_range %}in-buy-range {% endif %}{% if trade.ltp_near_buy_range and not trade.ltp_in_buy_range %}near-buy {% endif %}{% if trade.buy_gap_ready %}buy-ready{% endif %}">{{ trade.recommended_qty|floatformat:0 }} / {{ trade.holding_qty|floatformat:0 }}</td>
+        <td>{{ trade.buy_low|inr }} – {{ trade.buy_high|inr }}</td>
+        <td>{% if trade.last_ltp %}{{ trade.last_ltp|inr }}{% else %}—{% endif %}</td>
+        <td>{% if trade.target %}{{ trade.target|inr }}{% else %}—{% endif %}</td>
+        <td>{% if trade.stop_loss %}{{ trade.stop_loss|inr }}{% else %}—{% endif %}</td>
+        <td class="small">{{ trade.holding_age }}</td>
+        <td>
+          {% if trade.status == 'CLOSED' %}
+            <span class="{% if trade.realized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+              {{ trade.realized_pnl|inr }}
+            </span>
+          {% else %}
+            <span class="{% if trade.unrealized_pnl >= 0 %}pnl-pos{% else %}pnl-neg{% endif %}">
+              {{ trade.unrealized_pnl|inr }}
+            </span>
+          {% endif %}
+        </td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="8" class="text-center text-secondary py-5">{{ empty_message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>

@@ -9,6 +9,7 @@ from django.contrib.messages import constants as message_constants
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
+# Host .env; compose.yml also injects DB_NAME=/data/db.sqlite3 for Podman.
 load_dotenv(BASE_DIR / ".env")
 
 TESTING = "pytest" in sys.modules or os.environ.get("TESTING") == "1"
@@ -20,6 +21,8 @@ ALLOWED_HOSTS = [
     for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
     if h.strip()
 ]
+if DEBUG and "*" not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append("*")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -35,6 +38,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    # Gunicorn does not serve STATIC_ROOT; WhiteNoise does (admin CSS).
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -55,6 +60,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "trades.context_processors.sheets_nav",
             ],
         },
     },
@@ -62,6 +68,8 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "config.wsgi.application"
 
+# Default is MySQL for a rare host-only setup. Tests use in-memory SQLite.
+# The container overrides DB_ENGINE/DB_NAME to /data/db.sqlite3.
 _db_engine = os.getenv("DB_ENGINE", "django.db.backends.mysql")
 if TESTING:
     DATABASES = {
@@ -108,6 +116,14 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedStaticFilesStorage",
+    },
+}
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
@@ -163,3 +179,7 @@ CHECK_INTERVAL_MINUTES = int(os.getenv("CHECK_INTERVAL_MINUTES", "5"))
 CRON_SECRET = os.getenv("CRON_SECRET", "change-me-cron-secret")
 MARKET_OPEN = os.getenv("MARKET_OPEN", "09:15")
 MARKET_CLOSE = os.getenv("MARKET_CLOSE", "15:30")
+
+SHEETS_CONFIG_PATH = os.getenv(
+    "SHEETS_CONFIG_PATH", str(BASE_DIR / "data" / "sheets.json")
+)

@@ -8,6 +8,14 @@
   <style>
     body { background: #f4f6f8; }
     .stat-card { border: 0; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+    .buy-ready { color: #0f7b4c; font-weight: 600; }
+    td.in-buy-range,
+    td.near-buy {
+      --bs-table-bg: #fff3cd;
+      background-color: #fff3cd !important;
+      font-weight: 600;
+    }
+    td.in-buy-range.buy-ready { color: #0f7b4c; }
     .pnl-pos { color: #0f7b4c; }
     .pnl-neg { color: #b42318; }
     tr.row-profit { --bs-table-bg: #e8f6ee; }
@@ -15,11 +23,74 @@
     tr.row-open { --bs-table-bg: #fff; }
     tr.trade-row { cursor: pointer; }
     tr.trade-row:hover { filter: brightness(0.98); }
+    .app-shell { display: flex; align-items: stretch; min-height: calc(100vh - 56px); }
+    .sheet-sidebar {
+      width: 260px;
+      flex-shrink: 0;
+      background: #212529;
+      color: #dee2e6;
+      transition: width .2s ease, margin .2s ease;
+      overflow: hidden;
+    }
+    .sheet-sidebar.collapsed { width: 52px; }
+    .sheet-sidebar .sidebar-copy { white-space: nowrap; }
+    .sheet-sidebar.collapsed .sidebar-copy { display: none !important; }
+    .sheet-sidebar .sidebar-icon { display: none; width: 1.1rem; height: 1.1rem; }
+    .sheet-sidebar.collapsed .sidebar-icon { display: block; }
+    .sheet-sidebar.collapsed .sidebar-inner { padding: 0.55rem 0.3rem; }
+    .sheet-sidebar.collapsed .sidebar-heading { display: none; }
+    .sheet-sidebar.collapsed a.sheet-link {
+      padding: .45rem 0;
+      justify-content: center;
+    }
+    .sheet-sidebar .sheet-dot {
+      width: .55rem;
+      height: .55rem;
+      border-radius: 50%;
+      background: #6c757d;
+      display: none;
+      flex-shrink: 0;
+    }
+    .sheet-sidebar .sheet-dot.primary { background: #ffc107; display: inline-block; }
+    .sheet-sidebar.collapsed .sheet-dot { display: inline-block; }
+    .sheet-sidebar a.sheet-manage {
+      color: #adb5bd;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      margin-top: .75rem;
+      padding: .35rem .85rem;
+      border-radius: .4rem;
+    }
+    .sheet-sidebar a.sheet-manage:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .sheet-sidebar.collapsed a.sheet-manage {
+      justify-content: center;
+      margin-top: .4rem;
+      padding: .45rem 0;
+    }
+    .sheet-sidebar a.sheet-link {
+      color: #dee2e6;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      padding: .55rem .85rem;
+      border-radius: .4rem;
+    }
+    .sheet-sidebar a.sheet-link:hover { background: rgba(255,255,255,.08); color: #fff; }
+    .sheet-sidebar a.sheet-link.active { background: #0d6efd; color: #fff; }
+    main.app-main { flex: 1; min-width: 0; }
+    @media (max-width: 767.98px) {
+      .sheet-sidebar { position: absolute; z-index: 20; min-height: calc(100vh - 56px); }
+      .sheet-sidebar.collapsed { width: 0; margin-left: 0; }
+    }
   </style>
 </head>
 <body>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-    <div class="container">
+  {% load sheets %}
+  <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+    <div class="container-fluid">
+      <button class="btn btn-outline-light btn-sm me-2" type="button" id="sidebarToggle" aria-label="Toggle sheets">Sheets</button>
       <a class="navbar-brand" href="{% url 'dashboard' %}">Trade Tally</a>
       <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navMain">
         <span class="navbar-toggler-icon"></span>
@@ -27,7 +98,7 @@
       <div class="collapse navbar-collapse" id="navMain">
         <ul class="navbar-nav me-auto">
           <li class="nav-item">
-            <a class="nav-link{% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'trade_detail' %} active{% endif %}" href="{% url 'dashboard' %}">Trades</a>
+            <a class="nav-link{% if request.resolver_match.url_name == 'dashboard' or request.resolver_match.url_name == 'sheet_dashboard' or request.resolver_match.url_name == 'trade_detail' %} active{% endif %}" href="{% url 'dashboard' %}">Trades</a>
           </li>
           <li class="nav-item">
             <a class="nav-link{% if request.resolver_match.url_name == 'app_config' %} active{% endif %}" href="{% url 'app_config' %}">Config</a>
@@ -45,18 +116,68 @@
       </div>
     </div>
   </nav>
-  <main class="container pb-5">
-    {% if messages %}
-      {% for message in messages %}
-        <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
-          {{ message }}
-          <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  <div class="app-shell">
+    <aside class="sheet-sidebar" id="sheetSidebar">
+      <div class="sidebar-inner p-3">
+        <div class="sidebar-heading d-flex align-items-center justify-content-between mb-2">
+          <div class="sidebar-copy text-uppercase small text-secondary">Sheets</div>
         </div>
-      {% endfor %}
-    {% endif %}
-    {% block content %}{% endblock %}
-  </main>
+        {% for s in nav_sheets %}
+          <div class="mb-1">
+            <a class="sheet-link{% if current_sheet and s.slug == current_sheet.slug %} active{% endif %}" href="{% sheet_home s.slug %}" title="{{ s.label }}">
+              <span class="sheet-dot{% if s.slug == primary_slug %} primary{% endif %}" title="{% if s.slug == primary_slug %}Primary{% endif %}"></span>
+              <span class="sidebar-copy{% if s.slug == primary_slug %} ms-1{% endif %}">{{ s.label }}</span>
+            </a>
+            <div class="sidebar-copy px-2 pb-1">
+              {% if s.slug == primary_slug %}
+                <span class="badge text-bg-warning text-dark">Primary</span>
+              {% else %}
+                <form method="post" action="{% url 'set_primary' s.slug %}" class="d-inline">
+                  {% csrf_token %}
+                  <button class="btn btn-link btn-sm text-warning p-0" type="submit">Make primary</button>
+                </form>
+              {% endif %}
+            </div>
+          </div>
+        {% empty %}
+          <p class="sidebar-copy small text-secondary">Add a tab on Config.</p>
+        {% endfor %}
+        <a class="sheet-manage" href="{% url 'app_config' %}" title="Manage sheets">
+          <svg class="sidebar-icon" viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+            <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492M5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0"/>
+            <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52zm-2.348.746c.345-1.171 2.002-1.171 2.346 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c1.073-.585 2.248.59 1.663 1.663l-.16.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c1.171.345 1.171 2.002 0 2.346l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.585 1.073-.59 2.248-1.663 1.663l-.292-.16a1.873 1.873 0 0 0-2.692 1.116l-.094.318c-.345 1.171-2.002 1.171-2.346 0l-.094-.319a1.873 1.873 0 0 0-2.693-1.115l-.291.16c-1.073.585-2.248-.59-1.663-1.663l.16-.292a1.873 1.873 0 0 0-1.116-2.692l-.318-.094c-1.171-.345-1.171-2.002 0-2.346l.319-.094A1.873 1.873 0 0 0 3.434 4.07l-.16-.291c-.585-1.073.59-2.248 1.663-1.663l.292.16a1.873 1.873 0 0 0 2.692-1.115z"/>
+          </svg>
+          <span class="sidebar-copy">Manage sheets</span>
+        </a>
+      </div>
+    </aside>
+    <main class="app-main container-fluid py-4 px-3 px-lg-4">
+      {% if messages %}
+        {% for message in messages %}
+          <div class="alert alert-{{ message.tags|default:'info' }} alert-dismissible fade show" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const sidebar = document.getElementById("sheetSidebar");
+    const key = "tt-sidebar-collapsed";
+    function applyCollapsed(on) {
+      sidebar.classList.toggle("collapsed", on);
+      localStorage.setItem(key, on ? "1" : "0");
+    }
+    if (localStorage.getItem(key) === "1" || (localStorage.getItem(key) === null && window.innerWidth < 768)) {
+      sidebar.classList.add("collapsed");
+    }
+    document.getElementById("sidebarToggle").addEventListener("click", () => {
+      applyCollapsed(!sidebar.classList.contains("collapsed"));
+    });
+  </script>
   {% block extra_js %}{% endblock %}
 </body>
 </html>

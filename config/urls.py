@@ -1,3 +1,5 @@
+"""Root URL map: Django admin, optional auth, cron webhook, then the app."""
+
 from django.contrib import admin
 from django.urls import include, path
 

@@ -13,6 +13,7 @@ PLACEHOLDER_TOKEN = "your_telegram_bot_token_here"
 
 
 def _chat_and_enabled() -> tuple[str, bool]:
+    # UI AppSettings overlay .env; fall back if the DB is not ready (tests, migrate).
     try:
         from trades.runtime_config import telegram_alerts_enabled, telegram_chat_id
 
@@ -30,6 +31,7 @@ def is_configured() -> bool:
 
 
 def send_message(text: str) -> bool:
+    """POST Telegram Bot API sendMessage. No-op when token/chat is unset."""
     if not is_configured():
         logger.info("Telegram not configured; skipping message: %s", text)
         return False

@@ -15,3 +15,6 @@ staticfiles/
 .DS_Store
 dist/
 build/
+data/sheets.json
+data/sheets.tmp
+

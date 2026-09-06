@@ -1,3 +1,5 @@
+"""Config page, sheet catalog POST, and dashboard date/age display."""
+
 from datetime import date, timedelta
 from decimal import Decimal
 from unittest.mock import patch
@@ -10,12 +12,12 @@ from integrations.kite import parse_fills
 from integrations.sheets import parse_date, parse_portfolio_config, parse_rows
 from trades.models import (
     AppSettings,
-    KiteFill,
     KiteSession,
     TRADE_COLUMN_FIELDS,
     SUMMARY_CELL_FIELDS,
 )
 from trades.services import format_holding_age
+from trades.sheet_config import get_sheet, list_sheets
 
 
 def test_format_holding_age_units():
@@ -77,8 +79,9 @@ def test_config_get_is_separate_view(client):
     assert response.status_code == 200
     html = response.content.decode()
     assert "Telegram" in html
-    assert "Google Sheet" in html
+    assert "Default Google workbook" in html
     assert "Column mapping" in html
+    assert "Primary (cron)" in html
     assert "Current quantity" in html
 
 
@@ -86,36 +89,44 @@ def test_config_get_is_separate_view(client):
 def test_config_post_saves_telegram_and_sheet_mapping(client):
     AppSettings.load()
     payload = {
+        "action": "save",
         "telegram_chat_id": "4242",
         "telegram_alerts_enabled": "on",
         "google_spreadsheet_id": "sheet-abc",
-        "google_worksheet": "Aug24-27",
-        "col_symbol": "Share",
-        "col_current_qty": "Current Quantity",
-        "col_current_pnl": "Current P/L",
-        "sum_corpus": "A5",
-        "sum_risk_percentage": "B2",
-        "sum_current_value": "N2",
-        "sum_remaining_balance": "K2",
+        "sheet_count": "1",
+        "primary": "aug24-27",
+        "sheet_slug_0": "aug24-27",
+        "sheet_label_0": "Aug24-27",
+        "sheet_worksheet_0": "Aug24-27",
+        "sheet_spreadsheet_0": "",
+        "sheet_0_col_symbol": "Share",
+        "sheet_0_col_current_qty": "Current Quantity",
+        "sheet_0_col_current_pnl": "Current P/L",
+        "sheet_0_sum_corpus": "A5",
+        "sheet_0_sum_risk_percentage": "B2",
+        "sheet_0_sum_current_value": "N2",
+        "sheet_0_sum_remaining_balance": "K2",
     }
     for key, _label in TRADE_COLUMN_FIELDS:
-        payload.setdefault(f"col_{key}", "")
+        payload.setdefault(f"sheet_0_col_{key}", "")
     for key, _label in SUMMARY_CELL_FIELDS:
-        payload.setdefault(f"sum_{key}", "")
+        payload.setdefault(f"sheet_0_sum_{key}", "")
     response = client.post(reverse("app_config"), payload)
     assert response.status_code == 302
     cfg = AppSettings.load()
     assert cfg.telegram_chat_id == "4242"
     assert cfg.google_spreadsheet_id == "sheet-abc"
-    assert cfg.google_worksheet == "Aug24-27"
-    assert cfg.column_map["symbol"] == "Share"
-    assert cfg.column_map["current_qty"] == "Current Quantity"
-    assert cfg.summary_map["corpus"] == "A5"
+    sheet = list_sheets()[0]
+    assert sheet["worksheet"] == "Aug24-27"
+    assert sheet["column_map"]["symbol"] == "Share"
+    assert sheet["column_map"]["current_qty"] == "Current Quantity"
+    assert sheet["summary_map"]["corpus"] == "A5"
 
 
 @pytest.mark.django_db
 def test_dashboard_shows_holding_duration(client, trade):
     trade.opened_on = timezone.localdate() - timedelta(days=400)
+    trade.holding_qty = Decimal("10")
     trade.save()
     response = client.get("/")
     assert response.status_code == 200
@@ -132,6 +143,8 @@ def test_trade_detail_view(client, trade):
     html = response.content.decode()
     assert "INFY" in html
     assert "Plan" in html
+    assert "First target" in html
+    assert "TCP" in html
     assert trade.holding_age() in html
 
 
@@ -140,7 +153,7 @@ def test_sheet_sync_button_does_not_run_alerts(client, monkeypatch):
     calls = []
     monkeypatch.setattr(
         "integrations.sheets.sync_from_sheet",
-        lambda: calls.append("sheet") or [],
+        lambda *a, **k: calls.append("sheet") or [],
     )
     monkeypatch.setattr(
         "integrations.checker.run_checks",
@@ -154,7 +167,6 @@ def test_sheet_sync_button_does_not_run_alerts(client, monkeypatch):
 @pytest.mark.django_db
 def test_zerodha_sync_updates_trade_and_sheet(trade, monkeypatch):
     KiteSession.objects.create(access_token="tok")
-    writes = []
 
     class FakeClient:
         def holdings(self, token):
@@ -168,45 +180,63 @@ def test_zerodha_sync_updates_trade_and_sheet(trade, monkeypatch):
                 }
             ]
 
-        def trades(self, token):
-            return [
-                {
-                    "tradingsymbol": "INFY",
-                    "exchange": "NSE",
-                    "quantity": 10,
-                    "average_price": 1500,
-                    "transaction_type": "BUY",
-                    "order_id": "99",
-                }
-            ]
-
-        def ltp(self, token, instruments):
-            return {"NSE:INFY": {"last_price": 1510}}
-
     monkeypatch.setattr("integrations.zerodha_sync.KiteClient", FakeClient)
+    held = []
     monkeypatch.setattr(
-        "integrations.zerodha_sync.write_mapped_payload",
-        lambda synced_trade, payload: writes.append(payload) or [{"range": "P7"}],
+        "integrations.zerodha_sync.write_zerodha_holdings",
+        lambda items, slug=None: held.extend(items) or [{"range": "O5"}, {"range": "R5"}],
     )
     from integrations.zerodha_sync import sync_zerodha
 
     result = sync_zerodha()
     trade.refresh_from_db()
     assert result["trades_updated"] == 1
-    assert result["fills"] == 1
+    assert result["sheet_cells"] == 2
     assert trade.holding_qty == Decimal("40")
-    assert trade.last_ltp == Decimal("1510")
-    assert writes[0]["current_qty"] == "40"
-    assert "current_pnl" in writes[0]
-    assert KiteFill.objects.filter(symbol="INFY").count() == 1
-    assert AppSettings.load().last_zerodha_sync_at is not None
+    assert trade.remaining_qty == Decimal("40")
+    assert trade.last_ltp == Decimal("1500")
+    assert held[0][1] == Decimal("40")
+    assert get_sheet("aug24-27")["last_zerodha_sync_at"] is not None
+
+
+@pytest.mark.django_db
+def test_zerodha_sync_held_qty_zero_when_not_in_kite(trade, monkeypatch):
+    from trades.models import HoldingSnapshot
+
+    KiteSession.objects.create(access_token="tok")
+    trade.holding_qty = Decimal("95")
+    trade.save()
+    HoldingSnapshot.objects.create(
+        exchange="NSE",
+        symbol="INFY",
+        quantity=Decimal("95"),
+        average_price=Decimal("1450"),
+    )
+
+    class FakeClient:
+        def holdings(self, token):
+            return []
+
+    held = []
+    monkeypatch.setattr("integrations.zerodha_sync.KiteClient", FakeClient)
+    monkeypatch.setattr(
+        "integrations.zerodha_sync.write_zerodha_holdings",
+        lambda items, slug=None: held.extend(items) or [],
+    )
+    from integrations.zerodha_sync import sync_zerodha
+
+    sync_zerodha()
+    trade.refresh_from_db()
+    assert trade.holding_qty == Decimal("0")
+    assert held[0][1] == Decimal("0")
+    assert HoldingSnapshot.objects.get(symbol="INFY").quantity == Decimal("0")
 
 
 @pytest.mark.django_db
 def test_zerodha_sync_view_is_button_only(client, monkeypatch):
     monkeypatch.setattr(
         "integrations.zerodha_sync.sync_zerodha",
-        lambda: {"trades_updated": 1, "fills": 2, "sheet_cells": 3, "holdings": 1},
+        lambda **kwargs: {"trades_updated": 1, "sheet_cells": 3, "holdings": 1},
     )
     with patch("integrations.checker.run_checks") as checks:
         response = client.post(reverse("zerodha_sync"))

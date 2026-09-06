@@ -4,7 +4,7 @@ Personal, machine-local tracker for planned equity trades.
 
 The Google Sheet is the system of record. The Django UI reads that sheet, compares it to Zerodha holdings and live prices, sends Telegram buy/sell alerts, and can close trades (writing back to the sheet). There is no application database for trade data. Net P/L is calculated only when you click a button.
 
-This root file is the entry point. The full blueprint lives in [`docs/`](docs/README.md).
+This root file is the entry point. The full blueprint lives in [`docs/`](docs/README.md). How to fill the Google Sheet from advisor messages is in [`skills/google-sheet/`](skills/google-sheet/).
 
 | Document | What it covers |
 | --- | --- |

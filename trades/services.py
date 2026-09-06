@@ -1,3 +1,5 @@
+"""Close math, dashboard stats, and display helpers. No Kite HTTP here."""
+
 from decimal import Decimal
 from datetime import date
 
@@ -18,6 +20,7 @@ def close_writeback_payload(trade: TradeIdea) -> dict:
 
 
 def close_trade(trade: TradeIdea, quantity: Decimal, price: Decimal, *, writeback=True) -> CloseEvent:
+    """Record an exit, update remaining/status, optionally write the sheet."""
     if quantity <= 0:
         raise ValueError("Close quantity must be positive.")
     if price <= 0:
@@ -57,6 +60,69 @@ def close_trade(trade: TradeIdea, quantity: Decimal, price: Decimal, *, writebac
     return event
 
 
+def delete_trade(trade: TradeIdea, *, writeback: bool = True) -> tuple[str, str]:
+    """Remove a symbol from the app and clear its rows on the Google Sheet."""
+    slug = trade.sheet_slug
+    symbol = trade.symbol
+    if writeback:
+        from integrations.sheets import clear_trade_from_sheet
+
+        clear_trade_from_sheet(trade)
+    TradeIdea.objects.filter(sheet_slug=slug, symbol=symbol).delete()
+    return slug, symbol
+
+
+def _prefer_dashboard_trade(current: TradeIdea, candidate: TradeIdea) -> TradeIdea:
+    """Prefer the live open-block row, then any still-open row, then the larger holding."""
+    from integrations.sheets import COMPLETED_ROW_OFFSET
+
+    current_live = current.sheet_row < COMPLETED_ROW_OFFSET
+    candidate_live = candidate.sheet_row < COMPLETED_ROW_OFFSET
+    if candidate_live != current_live:
+        return candidate if candidate_live else current
+    current_open = current.status != TradeStatus.CLOSED
+    candidate_open = candidate.status != TradeStatus.CLOSED
+    if candidate_open != current_open:
+        return candidate if candidate_open else current
+    if candidate.holding_qty != current.holding_qty:
+        return candidate if candidate.holding_qty > current.holding_qty else current
+    if candidate.remaining_qty != current.remaining_qty:
+        return candidate if candidate.remaining_qty > current.remaining_qty else current
+    return current if current.sheet_row <= candidate.sheet_row else candidate
+
+
+def unique_dashboard_trades(trades: list[TradeIdea]) -> list[TradeIdea]:
+    """One row per symbol. Same ticker can exist on the open block and the completed block."""
+    chosen: dict[str, TradeIdea] = {}
+    order: list[str] = []
+    for trade in trades:
+        key = trade.symbol
+        prev = chosen.get(key)
+        if prev is None:
+            chosen[key] = trade
+            order.append(key)
+            continue
+        chosen[key] = _prefer_dashboard_trade(prev, trade)
+    return [chosen[key] for key in order]
+
+
+def apply_snapshot_ltp(trades: list[TradeIdea]) -> None:
+    """Fill missing LTP from the last Kite holding price (personal apps cannot quote)."""
+    from trades.models import HoldingSnapshot
+
+    snaps: dict[str, HoldingSnapshot] = {}
+    for row in HoldingSnapshot.objects.filter(symbol__in={t.symbol for t in trades}):
+        prev = snaps.get(row.symbol)
+        if prev is None or (row.quantity > prev.quantity):
+            snaps[row.symbol] = row
+    for trade in trades:
+        snap = snaps.get(trade.symbol)
+        if not snap or snap.last_price is None:
+            continue
+        if trade.last_ltp is None or snap.quantity > 0:
+            trade.last_ltp = snap.last_price
+
+
 def dashboard_stats(trades: QuerySet[TradeIdea] | list[TradeIdea]) -> dict:
     trade_list = list(trades)
     realized = CloseEvent.objects.filter(trade__in=trade_list).aggregate(s=Sum("realized_pnl"))["s"]
@@ -73,6 +139,7 @@ def dashboard_stats(trades: QuerySet[TradeIdea] | list[TradeIdea]) -> dict:
 
 
 def format_holding_age(start: date | None, today: date | None = None) -> str:
+    """Human age using 365-day years and 30-day months (display only)."""
     if start is None:
         return "—"
     today = today or timezone.localdate()
