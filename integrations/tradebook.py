@@ -28,6 +28,7 @@ from trades.models import (
     TradeIdea,
     TradeStatus,
 )
+from trades.sheet_config import DEFAULT_SHEET_SLUG, sheet_period
 
 IST = ZoneInfo("Asia/Kolkata")
 
@@ -258,6 +259,15 @@ def period_of(fills: list[dict]) -> tuple | None:
     return min(dates), max(dates)
 
 
+def fills_in_period(fills: list[dict], period: tuple | None) -> list[dict]:
+    """Every fill a dashboard owns. A tab like Aug24-27 spans Aug 2024 to Aug 2027,
+    so earlier lots of the same ticker still count against later sells."""
+    if period is None:
+        return list(fills)
+    start, end = period
+    return [f for f in fills if start <= f["trade_date"] <= end]
+
+
 def merge_fills(*groups: list[dict]) -> list[dict]:
     by_uid: dict[str, dict] = {}
     for group in groups:
@@ -429,6 +439,7 @@ def apply_match_to_trade(trade: TradeIdea, match: dict, *, writeback: bool = Tru
         _replace_tradebook_closes(trade, match)
         trade.status = TradeStatus.PARTIAL
         trade.remaining_qty = held if held > 0 else match["open_qty"]
+        trade.holding_qty = trade.remaining_qty
         trade.closed_qty = match["sell_qty"]
         trade.closed_price = match["avg_sell"]
         if trade.opened_on is None and first_buy is not None:
@@ -627,12 +638,15 @@ def ingest_tradebook(
     partial = 0
     skipped = 0
     sheet_closes: list[TradeIdea] = []
+    periods: dict[str, tuple | None] = {}
     for trade in tracked_trades:
         symbol_fills = [f for f in merged if f["symbol"] == trade.symbol.upper()]
         if not symbol_fills:
             continue
-        cutoff = trade.opened_on
-        window = [f for f in symbol_fills if cutoff is None or f["trade_date"] >= cutoff]
+        sheet_slug = trade.sheet_slug or DEFAULT_SHEET_SLUG
+        if sheet_slug not in periods:
+            periods[sheet_slug] = sheet_period(sheet_slug)
+        window = fills_in_period(symbol_fills, periods[sheet_slug])
         match = fifo_match(window, fallback_avg_buy=trade.avg_buy())
         if dry_run or not apply_closes:
             matches.append(

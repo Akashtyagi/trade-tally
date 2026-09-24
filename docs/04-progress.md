@@ -86,3 +86,9 @@ When you finish a checkbox, mark it and add a one-line note:
 ```
 
 If the product rules change, edit [Overview](01-overview.md) and [Features](02-features.md) first, then add new to-dos here.
+
+
+## TO-DO
+- [ ] How to find target between 1st, 2nd and 3rd 
+- [ ] If LTP higher than Target, highlight and trigger message
+- 

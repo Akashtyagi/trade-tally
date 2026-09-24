@@ -129,6 +129,8 @@ The script:
 3. Attaches fills to each tracked share’s detail page.
 4. If it sees **BUY then later SELL** and Zerodha held qty is **0**, marks the trade **CLOSED** and writes realized P/L (FIFO). A leftover holding after sells is **PARTIAL**.
 
+FIFO runs over every fill inside the **tab's own trading window**, read from its name: `Aug24-27` covers Aug 2024 to Aug 2027, so lots bought in one tradebook export still offset sells in a later one. The row's `Date` cell does not narrow this — a share bought again years after its first entry keeps the older lots. A tab whose name carries no dates (`FY26`, `Main`) matches against all fills.
+
 Dashboard list: filter by position (OPEN / PARTIAL / CLOSED) and arrange by name or position. Closed rows are green on profit and red on loss.
 
 ## 2.2 Sheet contract (business data)

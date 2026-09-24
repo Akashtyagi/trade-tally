@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import re
+from calendar import monthrange
 from copy import deepcopy
+from datetime import date
 from pathlib import Path
 
 from django.conf import settings
@@ -16,6 +18,28 @@ from django.conf import settings
 from trades.models import DEFAULT_COLUMN_MAP, DEFAULT_SUMMARY_MAP
 
 DEFAULT_SHEET_SLUG = "aug24-27"
+
+_MONTHS = {
+    "jan": 1, "january": 1,
+    "feb": 2, "february": 2,
+    "mar": 3, "march": 3,
+    "apr": 4, "april": 4,
+    "may": 5,
+    "jun": 6, "june": 6,
+    "jul": 7, "july": 7,
+    "aug": 8, "august": 8,
+    "sep": 9, "sept": 9, "september": 9,
+    "oct": 10, "october": 10,
+    "nov": 11, "november": 11,
+    "dec": 12, "december": 12,
+}
+
+# "Aug24-27", "aug24-27", "Aug 2024 - Jul 2027", "2024-2027" …
+_PERIOD_RE = re.compile(
+    r"(?P<m1>[a-z]{3,9})?\s*'?(?P<y1>\d{4}|\d{2})"
+    r"\s*(?:-|–|—|/|_|to)\s*"
+    r"(?P<m2>[a-z]{3,9})?\s*'?(?P<y2>\d{4}|\d{2})\s*$"
+)
 
 
 def config_path() -> Path:
@@ -25,6 +49,40 @@ def config_path() -> Path:
 def slugify_worksheet(name: str) -> str:
     text = re.sub(r"[^a-z0-9]+", "-", (name or "").strip().lower())
     return text.strip("-")[:64] or "sheet"
+
+
+def _full_year(text: str) -> int:
+    year = int(text)
+    return year if year >= 1000 else 2000 + year
+
+
+def parse_period(name: str) -> tuple[date, date] | None:
+    """Trading window a tab name encodes: 'Aug24-27' → 2024-08-01 … 2027-08-31."""
+    match = _PERIOD_RE.search((name or "").strip().lower())
+    if not match:
+        return None
+    start_month = _MONTHS.get(match.group("m1") or "")
+    end_month = _MONTHS.get(match.group("m2") or "")
+    try:
+        start = date(_full_year(match.group("y1")), start_month or 1, 1)
+        end_year = _full_year(match.group("y2"))
+        end_month = end_month or start_month or 12
+        end = date(end_year, end_month, monthrange(end_year, end_month)[1])
+    except ValueError:
+        return None
+    return (start, end) if end >= start else None
+
+
+def sheet_period(slug: str | None = None) -> tuple[date, date] | None:
+    """Window for one dashboard, or None when the name carries no dates."""
+    sheet = get_sheet(slug)
+    if sheet is None:
+        return parse_period(slug or "")
+    for name in (sheet.get("label"), sheet.get("worksheet"), sheet.get("slug")):
+        period = parse_period(name or "")
+        if period:
+            return period
+    return None
 
 
 def _empty_sheet(*, slug: str, worksheet: str, label: str = "", spreadsheet_id: str = "") -> dict:

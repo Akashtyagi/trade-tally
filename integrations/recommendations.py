@@ -99,6 +99,8 @@ TICKER_MAP = {
     "star cements": "STARCEMENT",
     "star cement": "STARCEMENT",
     "igil": "IGIL",
+    "centum electronics": "CENTUM",
+    "good luck india": "GOODLUCK",
 }
 
 _TICKER_TOKEN = re.compile(r"^[A-Z][A-Z0-9.&-]{1,20}$")

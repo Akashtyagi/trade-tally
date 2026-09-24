@@ -82,6 +82,35 @@ SAMPLE_BOOK = [
 ]
 
 
+def _book_row(symbol, trade_date, side, qty, price, trade_id, exchange="NSE"):
+    return [
+        symbol,
+        "INE009A01021",
+        trade_date,
+        exchange,
+        "EQ",
+        "EQ",
+        side,
+        "false",
+        qty,
+        price,
+        trade_id,
+        f"o-{trade_id}",
+        f"{trade_date}T11:00:00",
+    ]
+
+
+# CENTUM on the live Aug24-27 tab: 6 shares bought in 2025, then 7 bought and
+# 7 sold in 2026. The row's Date cell says 2026-04-16.
+SPLIT_YEAR_BOOK = [
+    SAMPLE_BOOK[0],
+    _book_row("INFY", "2025-05-30", "buy", "3", "2505", "t1"),
+    _book_row("INFY", "2025-06-25", "buy", "3", "2195", "t2", exchange="BSE"),
+    _book_row("INFY", "2026-04-16", "buy", "7", "2913", "t3"),
+    _book_row("INFY", "2026-06-01", "sell", "7", "3670", "t4"),
+]
+
+
 def test_is_source_tradebook_skips_ledger():
     assert is_source_tradebook("Tradebook - Sep 2025")
     assert is_source_tradebook("tradebook-ZN6729-EQ")
@@ -217,6 +246,37 @@ def test_ingest_from_values_persists_tracked_fills(trade, tmp_path):
     assert TradebookFill.objects.filter(symbol="INFY").count() == 2
     assert TradebookFill.objects.filter(symbol="RELIANCE").count() == 1
     assert trade.status == TradeStatus.CLOSED
+
+
+@pytest.mark.django_db
+def test_ingest_counts_lots_bought_before_the_sheet_row_date(trade, tmp_path):
+    trade.opened_on = date(2026, 4, 16)
+    trade.holding_qty = Decimal("0")
+    trade.remaining_qty = Decimal("0")
+    trade.save()
+    path = tmp_path / "book.csv"
+    path.write_text("\n".join(",".join(row) for row in SPLIT_YEAR_BOOK) + "\n")
+    ingest_tradebook(write_sheet=False, writeback_closes=False, csv_paths=[str(path)])
+    trade.refresh_from_db()
+    assert trade.status == TradeStatus.PARTIAL
+    assert trade.remaining_qty == Decimal("6")
+    assert trade.holding_qty == Decimal("6")
+    assert trade.closed_qty == Decimal("7")
+
+
+@pytest.mark.django_db
+def test_ingest_ignores_fills_outside_the_sheet_period(trade, tmp_path):
+    book = [SAMPLE_BOOK[0], _book_row("INFY", "2019-05-30", "buy", "3", "500", "t9")]
+    book.extend(SAMPLE_BOOK[1:])
+    trade.opened_on = None
+    trade.holding_qty = Decimal("0")
+    trade.save()
+    path = tmp_path / "book.csv"
+    path.write_text("\n".join(",".join(row) for row in book) + "\n")
+    ingest_tradebook(write_sheet=False, writeback_closes=False, csv_paths=[str(path)])
+    trade.refresh_from_db()
+    assert trade.status == TradeStatus.CLOSED
+    assert trade.opened_on == date(2025, 9, 2)
 
 
 @pytest.mark.django_db

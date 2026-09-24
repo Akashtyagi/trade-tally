@@ -1,5 +1,6 @@
 """Primary vs secondary sheet isolation for cron and dashboards."""
 
+from datetime import date
 from decimal import Decimal
 
 import pytest
@@ -7,7 +8,37 @@ from django.urls import reverse
 
 from integrations.checker import evaluate_open_trades, run_checks
 from trades.models import TradeIdea, TradeStatus
-from trades.sheet_config import list_sheets, primary_slug, upsert_sheet
+from trades.sheet_config import (
+    list_sheets,
+    parse_period,
+    primary_slug,
+    sheet_period,
+    upsert_sheet,
+)
+
+
+@pytest.mark.parametrize(
+    "name,expected",
+    [
+        ("Aug24-27", (date(2024, 8, 1), date(2027, 8, 31))),
+        ("aug24-27", (date(2024, 8, 1), date(2027, 8, 31))),
+        ("Aug24-Jul27", (date(2024, 8, 1), date(2027, 7, 31))),
+        ("Aug 2024 to Aug 2027", (date(2024, 8, 1), date(2027, 8, 31))),
+        ("2024-2027", (date(2024, 1, 1), date(2027, 12, 31))),
+        ("FY26", None),
+        ("Main", None),
+        ("Aug27-24", None),
+    ],
+)
+def test_parse_period_from_tab_name(name, expected):
+    assert parse_period(name) == expected
+
+
+@pytest.mark.django_db
+def test_sheet_period_falls_back_to_none_for_undated_tabs():
+    assert sheet_period("aug24-27") == (date(2024, 8, 1), date(2027, 8, 31))
+    upsert_sheet({"slug": "fy26", "worksheet": "FY26", "label": "FY26"})
+    assert sheet_period("fy26") is None
 
 
 def _other_trade():
